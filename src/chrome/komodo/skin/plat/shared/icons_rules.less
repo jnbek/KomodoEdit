@@ -1,3 +1,48 @@
+/* Force icon size for HiDPI displays */
+
+button, toolbarbutton, menuitem, tab
+{
+    &[class$='-icon'] image, [class$='-icon'] image,
+    &[class$='_icon'] image, [class$='_icon'] image,
+    image[class$='-icon'], image[class$='-icon'],
+    image[class$='_icon'], image[class$='_icon']
+    {
+        &:not(.autorepeatbutton-icon)
+        {
+            max-width: 16px;
+        }
+    }
+}
+
+.toolbarbutton-icon,
+.button-icon,
+.menu-iconic-icon,
+treechildren::-moz-tree-image,
+.textbox-search-icon,
+.native_file_image,
+dropmarker > image
+{
+    max-width: 16px;
+}
+
+#main-toolboxrow toolbarbutton > image,
+#main-toolboxrow toolbarbutton .toolbarbutton-icon
+{
+    width: 16px;
+    max-width: none;
+}
+
+#placesViewbox_placesWrapper
+#findresults_tabpanel-toolbarbox,
+.panel-toolbar-buttons
+{
+    toolbarbutton image &.toolbarbutton-icon,
+    button image &.toolbarbutton-icon
+    {
+        max-width: 14px;
+    }
+}
+
 /* Icon Tweaks */
 treechildren::-moz-tree-image(project-icon),
 #placesSubpanelProjectsTreechildren_SPV::-moz-tree-image
@@ -10,7 +55,7 @@ treechildren::-moz-tree-image(project-icon),
 treechildren::-moz-tree-image(project-icon),
 .project-icon
 {
-    list-style-image: @icon-project;
+    list-style-image: @icon-project !important;
 }
 
 /* GLOBAL */
@@ -54,7 +99,8 @@ menuitem[type="checkbox"]
         background-image: @icon-checkbox;
         background-repeat: no-repeat;
         background-position: center;
-        min-height: 17px;
+        background-size: 16px;
+        min-height: 16px;
     }
 
     &[checked="true"] > .menu-iconic-left
@@ -75,7 +121,8 @@ menuitem[type="radio"]
         background-image: @icon-radio;
         background-repeat: no-repeat;
         background-position: top left;
-        min-height: 17px;
+        background-size: 16px;
+        min-height: 16px;
     }
 
     &[checked="true"] > .menu-iconic-left,
@@ -150,14 +197,16 @@ menu .menu-right
     list-style-image: @icon-folder-up;
 }
 
+.new-folder-icon,
 .newfolder-icon
 {
     list-style-image: @icon-newfolder;
 }
 
-menulist dropmarker, textbox[type="autocomplete"] dropmarker
+menulist dropmarker, textbox[type="autocomplete"] dropmarker,
+.button-menubutton-dropmarker,
 {
-    list-style-image: @icon-dropmarker;
+    list-style-image: @icon-dropmarker !important;
     width: 16px;
 }
 
@@ -193,6 +242,12 @@ menulist dropmarker, textbox[type="autocomplete"] dropmarker
 .help-icon
 {
     list-style-image: @icon-help;
+}
+
+.button-menu-dropmarker,
+.button-menubutton-dropmarker
+{
+    list-style-image: none;
 }
 
 menu .help-icon, menuitem .help-icon
@@ -379,15 +434,7 @@ menu .help-icon, menuitem .help-icon
 .new-file-icon, /* new-file-icon is deprecated since Komodo 7 */
 .native-new-file-icon
 {
-    list-style-image: @icon-new-file;
-}
-
-#tabbed-view
-{
-    .native-new-file-icon
-    {
-        list-style-image: @icon-new-file-startpage;
-    }
+    list-style-image: @icon-new-file !important;
 }
 
 .new-window-icon
@@ -398,7 +445,7 @@ menu .help-icon, menuitem .help-icon
 .native_open_icon, /* open-file-icon deprecated since Komodo 7 */
 .open-file-icon
 {
-    list-style-image: @icon-open-file;
+    list-style-image: @icon-open-file !important;
 }
 
 .native_folder_icon
@@ -410,14 +457,25 @@ menu .help-icon, menuitem .help-icon
 .collab-sessions-menu-icon,
 .codeintel-settings-button,
 .project-tools-icon,
+.preferences-icon,
 page .cog-icon,
 {
     list-style-image: @icon-gear !important;
 }
 
+.customize-panes-icon
+{
+    list-style-image: @icon-customize-panes;
+}
+
+.packages-icon
+{
+    list-style-image: @icon-packages;
+}
+
 .new-template-icon
 {
-    list-style-image: @icon-new-template;
+    list-style-image: @icon-new-template !important;
 }
 
 .save-buffer-icon,
@@ -492,11 +550,13 @@ button[type="moreinfo"]
     list-style-image: @icon-button-moreinfo;
 }
 
+.remote-folder-icon,
 treechildren::-moz-tree-image(remotefolder)
 {
     list-style-image: @icon-remotefolder;
 }
 
+.remote-file-icon,
 treechildren::-moz-tree-image(remotefile)
 {
     list-style-image: @icon-remotefile;
@@ -515,6 +575,11 @@ treechildren::-moz-tree-image(remotefile)
 .textbox-search-icon
 {
     list-style-image: @icon-textbox-search;
+}
+
+.bug-icon
+{
+    list-style-image: @icon-bugs;
 }
 
 /* Komodo icons */
@@ -601,12 +666,12 @@ treechildren::-moz-tree-image(remotefile)
 
     .native-new-file-icon
     {
-        list-style-image: @icon-toolbar-new-file;
+        list-style-image: @icon-toolbar-new-file !important;
     }
 
     .native_open_icon
     {
-        list-style-image: @icon-toolbar-open-file;
+        list-style-image: @icon-toolbar-open-file !important;
     }
 
     .native-save-icon
@@ -857,6 +922,11 @@ treechildren::-moz-tree-image(remotefile)
 
 }
 
+statusbar .menu-icon
+{
+    list-style-image: @icon-toolbar-menu !important;
+}
+
 /* Icons that appear in menu's and misc places */
 #buttonBrowserPreview
 {
@@ -894,7 +964,7 @@ treechildren::-moz-tree-image(remotefile)
 /* Use same image for checked as the button itself already has a toggle effect */
 #pin-btn, #pin-btn[checked]
 {
-    list-style-image: @icon-pin;
+    list-style-image: @icon-pin !important;
 }
 
 .komodo-button-community
@@ -912,6 +982,7 @@ treechildren::-moz-tree-image(remotefile)
     list-style-image: @icon-bugs;
 }
 
+
 .tabs-select-button
 {
     // override hover effect in debugger panel with !important
@@ -919,9 +990,30 @@ treechildren::-moz-tree-image(remotefile)
 }
 
 .close-button,
-#tabs-closebutton
+#tabs-closebutton,
+.tabs-closebutton,
+.tab-close-button
 {
     list-style-image: @icon-close;
+}
+
+.tabs-closebutton
+{
+    opacity: 0.5;
+    &:hover
+    {
+        opacity: 1.0;
+    }
+}
+
+.favourite-icon
+{
+    list-style-image: @icon-favourite;
+}
+
+box.favourite-icon
+{
+    background-image: @icon-favourite;
 }
 
 /* Bug #100021 */
@@ -1640,4 +1732,177 @@ ko-pane[type="icons"]
         }
     }
 
+}
+
+/**
+ * Syntax checking statusbar images.
+ */
+#statusbar-check.syntax-okay {
+    list-style-image: @icon-statusbar-syntax-ok !important;
+}
+
+#statusbar-check.syntax-in-progress {
+    list-style-image: @icon-statusbar-syntax-inprogress !important;
+}
+
+#statusbar-check.syntax-warning {
+    list-style-image: @icon-statusbar-syntax-warning !important;
+}
+
+#statusbar-check.syntax-error {
+    list-style-image: @icon-statusbar-syntax-error !important;
+}
+
+window.hud-skinning .hud,
+window.hud-skinning statusbar
+{
+    .new-file-icon
+    {
+        list-style-image: @icon-hud-new-file !important;
+    }
+    
+    .new-template-icon
+    {
+        list-style-image: @icon-hud-new-template !important;
+    }
+    
+    .project-icon
+    {
+        list-style-image: @icon-hud-project !important;
+    }
+    
+    .open-file-icon
+    {
+        list-style-image: @icon-hud-open-file !important;
+    }
+    
+    .open-workspace-icon
+    {
+        list-style-image: @icon-hud-open-workspace !important;
+    }
+    
+    .preferences-icon,
+    .cog-icon
+    {
+        list-style-image: @icon-hud-gear !important;
+    }
+    
+    .customize-panes-icon
+    {
+        list-style-image: @icon-hud-customize-panes;
+    }
+    
+    .packages-icon
+    {
+        list-style-image: @icon-hud-packages;
+    }
+    
+    .ko-findbar-case-sensitive
+    {
+        -moz-image-region: auto !important;
+    }
+    
+    .ko-findbar-case-sensitive[value="FOC_SENSITIVE"]
+    {
+        list-style-image: @icon-hud-case-sensitive !important;
+    }
+    
+    .ko-findbar-case-sensitive[value="FOC_INSENSITIVE"]
+    {
+        list-style-image: @icon-hud-case-insensitive !important;
+    }
+    
+    .ko-findbar-case-sensitive[value="FOC_SMART"]
+    {
+        list-style-image: @icon-hud-case-smart-size !important;
+    }
+    
+    .ko-findbar-open-dialog
+    {
+        list-style-image: @icon-hud-open-find !important;
+    }
+    
+    .ko-findbar-next,
+    .down-icon
+    {
+        list-style-image: @icon-hud-down !important;
+    }
+        
+    .ko-findbar-prev,
+    .up-icon
+    {
+        list-style-image: @icon-hud-up !important;
+    }
+    
+    .ko-findbar-closebutton,
+    .close-icon
+    {
+        -moz-image-region: auto !important;
+        list-style-image: @icon-hud-close !important;
+    }
+    
+    .ko-findbar-pattern-type
+    {
+        -moz-image-region: auto !important;
+    }
+    
+    .ko-findbar-pattern-type[value="FOT_SIMPLE"]
+    {
+        list-style-image: @icon-hud-findpattern-simple !important;
+    }
+    
+    .ko-findbar-pattern-type[value="FOT_WILDCARD"]
+    {
+        list-style-image: @icon-hud-findpattern-wildcard !important;
+    }
+    
+    .ko-findbar-pattern-type[value="FOT_REGEX_PYTHON"]
+    {
+        list-style-image: @icon-hud-findpattern-regex !important;
+    }
+
+    toolbarbutton > dropmarker
+    {
+        visibility: collapse;
+    }
+    
+    menulist dropmarker, textbox[type="autocomplete"] dropmarker,
+    .button-menubutton-dropmarker,
+    {
+        list-style-image: @icon-hud-dropmarker !important;
+    }
+    
+    .help-icon
+    {
+        list-style-image: @icon-hud-help;
+    }
+    
+    .bug-icon
+    {
+        list-style-image: @icon-hud-bugs;
+    }
+    
+    /**
+     * Syntax checking statusbar images.
+     */
+    #statusbar-check.syntax-okay {
+        list-style-image: @icon-hud-statusbar-syntax-ok !important;
+    }
+    
+    #statusbar-check.syntax-in-progress {
+        list-style-image: @icon-hud-statusbar-syntax-inprogress !important;
+    }
+    
+    #statusbar-check.syntax-warning {
+        list-style-image: @icon-hud-statusbar-syntax-warning !important;
+    }
+    
+    #statusbar-check.syntax-error {
+        list-style-image: @icon-hud-statusbar-syntax-error !important;
+    }
+}
+
+.wordspace_open_icon
+{
+    list-style-image: @icon-workspace-open;
 }

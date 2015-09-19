@@ -145,6 +145,7 @@
         <parameter name="params"/>
         <body>
         <![CDATA[
+          //this._log.setLevel(this._log.DEBUG);
           try {
             try {
               this._log.debug("addWidget: " + widget + ", " + JSON.stringify(params));
@@ -648,6 +649,11 @@
           -->
         <parameter name="event"/>
         <body>
+        <![CDATA[
+          if (this.tabpanels.firstChild && this.tabpanels.firstChild.localName == "children") {
+            this._log.warn("Removing strange 'children' childNode from tabpanels");
+            this.tabpanels.removeChild(this.tabpanels.firstChild);
+          }
           ko.widgets.createPane((function(pane) {
             let widget = Array.slice(this.selectedPanel.childNodes)
                               .filter(function(child) "_is_ko_widget" in child)
@@ -670,6 +676,7 @@
               }
             }
           }).bind(this), this);
+        ]]>
         </body>
       </method>
 
@@ -872,7 +879,6 @@
             }
           }
 
-          let menuitem;
           menuitem = popup.querySelector('[anonid="tabs_popup_move_tab_up"]');
           menuitem.setAttribute("label", getMoveLabel("tab", "up"));
           if (widget.tab === tabs[0]) {
@@ -1551,6 +1557,7 @@
             return;
           }
           let elem = null;
+          if ( !  this.selectedPanel) return;
           for (let child of this.selectedPanel.childNodes) {
             if ((child instanceof Element) && child.localName == "splitter") {
               elem = document.createElement("splitter");
@@ -1763,11 +1770,6 @@
           return observer;
         }).call(this)
       ]]>
-      </field>
-
-      <field name="_notification">
-        /* This is used for the status messages on drag-and-drop */
-        ko.statusBar.AddMessage(null, "panes", 500, false, true, false)
       </field>
 
       <property name="label">
@@ -2072,8 +2074,6 @@
                         " status: " + JSON.stringify(status) +
                         " attrib: " + this.getAttribute("ko-pane-drag-status"));
         this.setAttribute("ko-pane-drag-status", status ? "dragover" : "waiting");
-        this._notification.summary = status;
-        ko.statusBar.AddMessage(this._notification);
         // Need to preventDefault, otherwise we always get a no-drop
         event.preventDefault();
         this._log.debug("<<< drag over " + this.id +
@@ -2118,7 +2118,6 @@
           }
         }
         this.setAttribute("ko-pane-drag-status", "waiting");
-        ko.notifications.remove(this._notification);
         this._log.debug("<<< drag leave " + this.id +
                         ": dropEffect = " +
                         event.dataTransfer.dropEffect +
@@ -2183,7 +2182,6 @@
           window.focus();
         }
         this.removeAttribute("ko-pane-drag-status");
-        ko.notifications.remove(this._notification);
       ]]>
       </handler>
       <handler event="dragend" phase="bubbling">
@@ -2191,7 +2189,6 @@
         if (!this.customizing) {
           return;
         }
-        ko.notifications.remove(this._notification);
         for (let id of ko.widgets.panes) {
           ko.widgets.getPaneAt(id).removeAttribute("ko-pane-drag-status");
         }
@@ -2292,7 +2289,7 @@
         Object.defineProperty(this.contentWindow, "parent", {
           value: win, writable: true, configurable: true, enumerable: true,
         });
-        for (let prop of ["ko", "xtk", "gEditorTooltipHandler"]) {
+        for (let prop of ["require", "JetPack", "ko", "xtk", "gEditorTooltipHandler"]) {
           Object.defineProperty(this.contentWindow, prop, {
             value: win[prop], writable: false, configurable: true, enumerable: true,
           });
@@ -2359,6 +2356,9 @@
                       result = parent;
                       break;
                   }
+              }
+              if (result) {
+                  break;
               }
           }
           return result;

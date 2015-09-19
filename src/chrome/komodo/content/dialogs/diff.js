@@ -150,10 +150,18 @@ function loadDiffResult(result, cwd) {
         diffView.setFocus();
         // Remove the notification widget.
         diffView.notificationbox.removeAllNotifications(true /* false means to slide away */);
+
+        // On Mac OSX, ensure the Scintilla view is visible by forcing a repaint.
+        // TODO: investigate why this happens and come up with a better solution.
+        // NOTE: repainting a Scintilla view by itself is not sufficient;
+        // Mozilla needs to repaint the entire window.
         if (navigator.platform.match(/^Mac/)) {
-            // Bug 96209, bug 99277 - hack around scintilla display problems on the mac.
-            setTimeout(function() { diffView.scintilla.setAttribute("flex", "2"); }, 1);
+            window.setTimeout(function() {
+                window.resizeBy(1, 0);
+                window.resizeBy(-1, 0);
+            }, 10);
         }
+
     } catch(ex) {
         _dw_log.exception(ex, "error loading diff window dialog.");
     }

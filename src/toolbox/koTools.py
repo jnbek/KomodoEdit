@@ -36,13 +36,13 @@ _toolsManager = None
 
 _icons = {
     'folder'    :   'chrome://komodo/skin/images/folder-closed.png',
-    'menu'      :   'chrome://komodo/skin/images/menu_icon.png',
-    'toolbar'   :   'chrome://komodo/skin/images/toolbar_icon.png',
-    'terminal'  :   'chrome://fugue/skin/icons/application-terminal.png',
-    'macro'     :   'chrome://komodo/skin/images/macro.png',
-    'cut'       :   'chrome://komodo/skin/images/cut.png',
-    'template'  :   'chrome://komodo/skin/images/newTemplate.png',
-    'url'       :   'chrome://fugue/skin/icons/globe.png'
+    'menu'      :   'chrome://komodo/skin/images/toolbox/menu.svg',
+    'toolbar'   :   'chrome://komodo/skin/images/toolbox/toolbar.svg',
+    'terminal'  :   'chrome://komodo/skin/images/toolbox/command.svg',
+    'macro'     :   'chrome://komodo/skin/images/toolbox/macro.svg',
+    'cut'       :   'chrome://komodo/skin/images/toolbox/snippet.svg',
+    'template'  :   'chrome://komodo/skin/images/toolbox/template.svg',
+    'url'       :   'chrome://komodo/skin/images/toolbox/browser.svg'
 }
 
 if sys.platform == 'darwin':
@@ -106,10 +106,17 @@ class _KoTool(object):
         return iconurl is not None
 
     def get_iconurl(self):
+        iconurl = None
         if self._attributes.has_key('icon'):
-            return self._attributes['icon']
+            iconurl = self._attributes['icon']
         else:
-            return self._iconurl
+            iconurl = self._iconurl
+            
+        if iconurl.startswith("chrome://icomoon"):
+            iconurl = re.sub(r'chrome:.*\/(.*?).png', r'koicon://ko-svg/chrome/icomoon/skin/\1.svg', iconurl)
+            self.set_iconurl(iconurl)
+            
+        return iconurl
 
     def set_iconurl(self, url):
         if not url or url == self._iconurl:

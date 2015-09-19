@@ -260,6 +260,27 @@ if (typeof(ko.widgets)=='undefined') {
                 data.browser = pane.addWidget(aID, {focus: false});
             }
         }
+
+        if (data.browser && ! data._loadListenerAdded) {
+            data._loadListenerAdded = true;
+
+            var loadEvent = function() {
+                var event = new CustomEvent("widget-load",
+                {
+                    bubbles: false,
+                    cancelable: false,
+                    detail: data
+                });
+                window.dispatchEvent(event);
+            }
+
+            if (data.browser.contentDocument.readyState == "complete") {
+                loadEvent();
+            } else {
+                data.browser.contentWindow.addEventListener("load", loadEvent);
+            }
+        }
+
         return data.browser;
     };
 
@@ -452,7 +473,7 @@ if (typeof(ko.widgets)=='undefined') {
             }
         }
         let initializer = (function(win) {
-            ["ko", "xtk", "gEditorTooltipHandler"].forEach(function(prop) {
+            ["require", "JetPack", "ko", "xtk", "gEditorTooltipHandler"].forEach(function(prop) {
                 Object.defineProperty(win, prop, {
                     get: function() window[prop],
                     enumerable: true, configurable: true,
@@ -491,8 +512,8 @@ if (typeof(ko.widgets)=='undefined') {
               pane.ownerDocument.title = label;
             } else {
               for (let i = 1;; ++i) {
-                var label = this._strings.formatStringFromName("pane.floating.count.label",
-                                                               [i], 1);
+                label = this._strings.formatStringFromName("pane.floating.count.label",
+                                                           [i], 1);
                 if (labels.indexOf(label) == -1) {
                   pane.setAttribute("label", label);
                   pane.ownerDocument.title = label;
@@ -616,9 +637,7 @@ if (typeof(ko.widgets)=='undefined') {
                 this._persist_state.panes[id] = data;
             }
             log.debug("onload: old panes = " + JSON.stringify(this._persist_state));
-            let ids = {};
-            prefs.getPrefIds(ids, {});
-            for (let id of ids.value) {
+            for (let id of prefs.getPrefIds()) {
                 log.debug("load prefs: id=" + id);
                 if (!/^uilayout_widget_position_/.test(id)) {
                     continue;

@@ -249,7 +249,7 @@ class GitBranch(Branch):
         cmd = ["apply", "--binary", "--reject", "-"]
         proc = self._open(*cmd, stdin=subprocess.PIPE)
         proc.communicate(patch)
-        self._execute("add", "--all", "--", *all_changed_paths)
+        self._execute("add", "-f", "--all", "--", *all_changed_paths)
         if proc.returncode:
             raise IntegrationError("Failed to apply patch")
         return message
@@ -590,8 +590,9 @@ class Configuration(SafeConfigParser):
 
     def get_revision(self, revision):
         for branch in self.branches.values():
-            cwd = os.getcwd() + os.sep
-            if not cwd.startswith(branch.base_dir + os.sep):
+            cwd = os.path.normcase(os.getcwd() + os.sep)
+            branch_base_dir = os.path.normcase(branch.base_dir + os.sep)
+            if not cwd.startswith(branch_base_dir):
                 continue
             try:
                 return branch.get_revision(revision)
@@ -852,9 +853,10 @@ class GitRevision(Revision):
                 change.append(path)
                 paths[src] = path
             elif action[0] == "C":
+                dest=lines.pop(0)
                 path = ChangedPath(ChangedPath.COPIED,
                                    src=src,
-                                   dest=lines.pop(0))
+                                   dest=dest)
                 change.append(path)
                 paths[dest] = path
             elif action[0] == "D":
@@ -948,7 +950,7 @@ class GitRevision(Revision):
                 remote = remote.rsplit("/", 1)[-1]
         except subprocess.CalledProcessError:
             pass
-        summary = "https://github.com/Komodo/%s/commit/%s" % (remote.replace(".git", ""), self.revision)
+        summary = "https://github.com/Komodo/%s/commit/%s" % (remote.replace(".git", ""), self.pretty_rev)
         branch = (self.branch
                       ._capture_output("describe", "--all", "--abbrev=0")
                       .strip())

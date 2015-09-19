@@ -15,7 +15,7 @@ if (typeof ko.breadcrumbs == 'undefined')
 {
     ko.breadcrumbs = function()
     {
-        window.addEventListener("load", this.init.bind(this));
+        window.addEventListener("komodo-post-startup", this.init.bind(this));
     };
 }
 
@@ -72,6 +72,8 @@ if (typeof ko.breadcrumbs == 'undefined')
          */
         init: function breadcrumbs_init()
         {
+            log.debug("Init");
+
             self = this;
 
             // Record references
@@ -89,6 +91,8 @@ if (typeof ko.breadcrumbs == 'undefined')
 
             // Register Controller 
             window.controllers.appendController(this.controller);
+
+            this.load();
         },
 
         /**
@@ -108,6 +112,8 @@ if (typeof ko.breadcrumbs == 'undefined')
          */
         load: function breadcrumbs_load(noDelay = false)
         {
+            log.debug("Load");
+            
             // By default the load is delayed so as not to interfere with the
             // event that triggered it. 
             if ( ! noDelay || eventContext.loadInProgress)
@@ -131,6 +137,7 @@ if (typeof ko.breadcrumbs == 'undefined')
 
             var view = ko.views.manager.currentView;
             if ( ! view) {
+                log.debug("No view, cancelling load");
                 return;
             }
             log.debug("Loading crumbs for view ("+view.uid+" : "+view.title+")");
@@ -233,7 +240,11 @@ if (typeof ko.breadcrumbs == 'undefined')
                     // Fast Open shortcut
                     if (e.shiftKey && e.ctrlKey)
                     {
-                        this.doCommandFastOpen(crumb);
+                        // on timeout so as not to make the mouseup event hide
+                        // commando
+                        setTimeout(function() {
+                            this.doCommandFastOpen(crumb);
+                        }.bind(this), 100);
                     }
 
                     // Show in places shortcut
@@ -472,6 +483,36 @@ if (typeof ko.breadcrumbs == 'undefined')
         doCommandSelect: function breadcrumbs_onCommandSelect(popupmenu, menuitem)
         {
             popupmenu.file.getChild(menuitem.getAttribute("label")).open();
+        },
+
+        /**
+         * Open the Find in File dialog with the current crumb's folder selected
+         *
+         * @param   {Object} crumb
+         *
+         * @returns {Void}
+         */
+        doCommandFastOpen: function breadcrumbs_doCommandFastOpen(popupmenu)
+        {
+            if ( ! popupmenu.file || popupmenu.file.isRemote()) return;
+
+            var path = popupmenu.file.getPath();
+            var commando = require("commando/commando");
+            var sdkFile = require("ko/file");
+
+            commando.selectScope("scope-files");
+            commando.setSubscope({
+                id: path,
+                name: sdkFile.basename(path),
+                description: path,
+                isScope: true,
+                scope: "scope-files",
+                data: {
+                    path: path,
+                    type: "dir"
+                }
+            });
+            commando.show();
         },
 
         /**
@@ -1033,7 +1074,7 @@ if (typeof ko.breadcrumbs == 'undefined')
 
             // Set basic crumb attributes
             crumb.setAttribute('id' , uid);
-            crumb.setAttribute('label', name || "(root)");
+            crumb.setAttribute('label', (name || "(root)") + "/");
             crumb.setAttribute(
                 'style',
                 'z-index: ' +
@@ -1044,7 +1085,7 @@ if (typeof ko.breadcrumbs == 'undefined')
                 ko.prefs.getBoolean("native_mozicons_available", false))
             {
                 crumb.setAttribute(
-                    'image', "moz-icon://" + file.getFilename() + "?size=16"
+                    'image', "koicon://" + file.getFilename() + "?size=16"
                 );
             }
 
@@ -1126,7 +1167,7 @@ if (typeof ko.breadcrumbs == 'undefined')
                     if (ko.prefs.getBoolean("native_mozicons_available", false))
                     {
                         elem.setAttribute(
-                            'image', "moz-icon://" + child.getFilename() + "?size=16"
+                            'image', "koicon://" + child.getFilename() + "?size=16"
                         );
                     }
                 }

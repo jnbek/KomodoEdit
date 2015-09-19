@@ -97,6 +97,7 @@
 <!ENTITY L.accesskey "L">
 <!ENTITY MMinute0059.label "&#37;M : minute [00,59]">
 <!ENTITY OK.label "OK">
+<!ENTITY Apply.label "Apply">
 <!ENTITY PHP.label "PHP">
 <!ENTITY PHPDirectories.label "PHP Directories">
 <!ENTITY POST.label "POST">
@@ -259,7 +260,7 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY foldMarginColor.label "Fold margin color">
 <!ENTITY fonts.accesskey "F">
 <!ENTITY fonts.label "Fonts">
-<!ENTITY fontsAndColors.label "Fonts and Colors">
+<!ENTITY fontsAndColors.label "Color Scheme">
 <!ENTITY general.label "General">
 <!ENTITY h.accesskey "h">
 <!ENTITY hash.label "#">
@@ -318,6 +319,7 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY lessUseInterpreter.label "Use Less Interpreter:">
 <!ENTITY lineCursor.label "Line cursor">
 <!ENTITY lintEOLs.label "Enable checking of mixed end-of-line (EOL) characters">
+<!ENTITY lintShowResultsInline.label "Show Lint Results Inline">
 <!ENTITY lintClearResultsOnEachChange.label "Clear Lint Results On Each Change">
 <!ENTITY mMonth0112.label "&#37;m : month [01,12]">
 <!ENTITY macClassicR.label "Mac Classic (\r)">
@@ -331,7 +333,7 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY new.label "New...">
 <!ENTITY newAssociation.label "New Association">
 <!ENTITY newConfiguration.accesskey "n">
-<!ENTITY newFiles.label "New Files">
+<!ENTITY newFiles.label "File Opening">
 <!ENTITY newServer.label "New Server">
 <!ENTITY newServer.tooltiptext "New Server">
 <!ENTITY none.label "None">
@@ -353,10 +355,6 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY plPerl.label ".pl: Perl">
 <!ENTITY plainText.label "Plain text">
 <!ENTITY pmPerlModule.label ".pm: Perl Module">
-<!ENTITY preferFixed.accesskey "X">
-<!ENTITY preferFixed.label "Prefer Fixed">
-<!ENTITY preferProp.accesskey "P">
-<!ENTITY preferProp.label "Prefer Prop.">
 <!ENTITY preferTabCharactersOverSpaces.label "Prefer Tab characters over spaces">
 <!ENTITY preferences.title "Preferences">
 <!ENTITY prefsHelpButton.accesskey "H">
@@ -379,7 +377,7 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY priority2.label "Priority 2">
 <!ENTITY priority3.label "Priority 3">
 <!ENTITY projectPreferences.label "Project Preferences">
-<!ENTITY projectsAndWorkspace.label "Projects and Workspace">
+<!ENTITY projectsAndWorkspace.label "Workspace">
 <!ENTITY properties.label "Properties">
 <!ENTITY proportional.label "Proportional">
 <!ENTITY pyflakesChecking.label "Pyflakes Checking">
@@ -412,7 +410,7 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY restoreFoldStateOnDocumentLoadSlowsDownFileOpening.label "Restore fold state on document load (slows down file opening)">
 <!ENTITY restoreLastWorkspace.label "Restore last workspace">
 <!ENTITY ruby.label "Ruby">
-<!ENTITY saveOptions.label "Save Options">
+<!ENTITY saveOptions.label "File Saving">
 <!ENTITY sassUseInterpreter.label "Use Sass Interpreter:">
 <!ENTITY scssKomodoChecker.label "Use Built-In SCSS Syntax Checker:">
 <!ENTITY scssUseInterpreter.label "Use SCSS Interpreter:">
@@ -426,10 +424,10 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY settingOnlyAppliesWhenTheCursorStyleIsLine.tooltiptext "Setting only applies when the cursor style is line">
 <!ENTITY setupCommonKomodoFileAssociations.title "Setup Common Komodo File Associations">
 <!ENTITY shortNameYouWishToCallThisServerConnection.tooltiptext "Short name you wish to call this server connection.">
+<!ENTITY showAdvanced.label "Show Advanced">
 <!ENTITY showEdgeLine.label "Draw the edge line column">
 <!ENTITY showEndOfLineCharacters.label "Show end-of-line (EOL) characters">
 <!ENTITY showIndentationGuides.label "Show indentation guides">
-<!ENTITY showKomodoStartPageOnStartup.label "Show Komodo Start Page on startup">
 <!ENTITY showLineNumbers.label "Show line numbers">
 <!ENTITY showWhitespaceCharacters.label "Show whitespace characters">
 <!ENTITY signatureBOM.label "Signature (BOM)">
@@ -440,7 +438,6 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY foldSeparateBlockParts.tooltiptext "Splits folding blocks on single-line constructs like '} ... {'">
 <!ENTITY squareTrees.label "Square trees">
 <!ENTITY startOfLine.label "Start of line">
-<!ENTITY startPage.label "Start Page">
 <!ENTITY syntaxChecking.label "Syntax Checking">
 <!ENTITY tPerlTestScript.label ".t: Perl Test Script">
 <!ENTITY templates.label "Templates">
@@ -450,11 +447,14 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY update.label "Update">
 <!ENTITY updateFileStatusAutomatically.label "Update file status automatically">
 <!ENTITY useEmacsStyleLocalModeVariableModeLocalVariables.label "Use Emacs-style local 'mode' variable (-*- mode: ... -*-, Local Variables: ...)">
+<!ENTITY preferJavaScriptOverNode.label "Prefer JavaScript over Node.js">
 <!ENTITY useFileContentToDetermineLanguage.label "Use File Content to Determine Language">
 <!ENTITY useHorizontalLineOnFolds.label "Use horizontal line on folds">
 <!ENTITY useShebangLine.label "Use shebang line (#!...)">
 <!ENTITY useSignatureBOM.label "Use Byte Order Mark (BOM) signature">
 <!ENTITY useSmartIndent.label "Use Smart Indent">
+<!ENTITY useSSHKeyCheckbox.label "Specify an OpenSSH key file for authentication">
+<!ENTITY useSSHKeyTextbox.tooltip "The file path of the private key you wish to use for Authentication (the file must be in the OpenSSH private key format). If a password is required - it will be prompted for on first use of this key.">
 <!ENTITY useTabCharacterToCompleteWordsLikeCtrlSpace.label "Use Tab character to complete words like Ctrl+Space">
 <!ENTITY usernameUsedToLoginToTheRemoteServer.tooltiptext "Username used to login to the remote server.">
 <!ENTITY value.label "Value">
@@ -514,14 +514,13 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY sampleText.label "Sample text:">
 <!ENTITY schemeType.label "Scheme: (system schemes are in bold)">
 <!ENTITY schemeType.accesskey "S">
-<!ENTITY chooseEncodFont.description "Choose an encoding and font for Komodo's editor windows.">
-<!ENTITY filePrefAllLangEncod.label "Encoding: ">
-<!ENTITY filePrefAllLangEncod.accesskey "E">
+<!ENTITY filePrefAllLangFontFamily.label "Font:">
 <!ENTITY filePrefAllLangFixedWidth.label "Fixed width:">
 <!ENTITY filePrefAllLangFixedWidth.accesskey "W">
 <!ENTITY filPrefAllLangForeText "Fore:">
 <!ENTITY filPrefAllLangBackText "Back:">
 <!ENTITY filePrefAllLangProportional.label "Proportional:">
+<!ENTITY lineSpacing.label "Line Spacing:">
 <!ENTITY chooseColorEditorElement.description "Choose colors for Komodo's editor elements (i.e. anything in the editor that is not syntax coloring).">
 <!ENTITY filePrefAllLangColorChoice.label "Color choice:">
 <!ENTITY filePrefAllLangColorChoice.accesskey "h">
@@ -529,7 +528,9 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY filePrefAllLangElementType.label "Element type: ">
 <!ENTITY filePrefAllLangElementType1.accesskey "T">
 <!ENTITY filePrefAllLangFace.label "Face:">
+<!ENTITY filePrefAllLangFont.label "Font:">
 <!ENTITY filePrefAllLangSize.label "Size:">
+<!ENTITY filePrefAllLangStyle.label "Style:">
 <!ENTITY filePrefAllLangForeground.label "Foreground:">
 <!ENTITY filePrefAllLangBackground.label "Background:">
 <!ENTITY filePrefSubLanguageBackground.label "Sub-language background:">
@@ -570,7 +571,7 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 
 <!--pref-intl.xul-->
 <!ENTITY useEncodeEnvironment.label "Use encoding defined in environment:">
-<!ENTITY customEncoding.label "Custom encoding:">
+<!ENTITY defaultEncoding.label "Default encoding:">
 <!ENTITY dateTime.label "Date &amp; Time">
 <!ENTITY format.label "Format">
 <!ENTITY dateTimeExample.label "Example:">
@@ -666,6 +667,9 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY CheckWithHTML5lib.label "Check With html5lib">
 <!ENTITY HTML5lib.label "html5lib">
 <!ENTITY HTMLTidy.label "HTML Tidy">
+<!ENTITY highlightMatchingTag.label "Highlight matching tag on mouse click">
+<!ENTITY highlightMatchingTagRemoveAfter.label "Remove tag highlighting after">
+<!ENTITY highlightMatchingTagConstrain.label "Constrain tag matching to the visible region">
 
 <!--pref-indentation.xul-->
 <!ENTITY autoIndentStyle.label "Auto-indent style:">
@@ -763,6 +767,14 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY skinDefault.label "Default">
 <!ENTITY iconset.label "Icon Set: ">
 <!ENTITY iconset.tooltip "Select what icon set Komodo should use. Note that selecting a skin may set the iconset selection to the best suited iconset for the skin.">
+<!ENTITY colored.value "Colored">
+<!ENTITY iconsetColor.label "Icon Colors:">
+<!ENTITY skinEditorScrollbars.label "Skin Editor Scrollbars">
+<!ENTITY enableSchemeSkinning.label "Color HUD with Color Scheme">
+<!ENTITY colorBase.label "Base">
+<!ENTITY colorToolbar.label "Toolbar">
+<!ENTITY colorWidgets.label "Widgets">
+<!ENTITY colorSelected.label "Selected">
 
 <!--pref-perl.xul-->
 <!ENTITY noPerlInterpreter.description "No Perl interpreter was found on your system. If you would like to debug and run Perl programs in Komodo you will need to install Perl. You can get Perl from ActiveState at">
@@ -910,7 +922,44 @@ For example, when entering '(', automatically add a closing ')' after the cursor
 <!ENTITY indicStyleHidden.label "Hidden">
 <!ENTITY indicStyleBox.label "Box outline">
 <!ENTITY indicStyleRoundBox.label "Rounded box">
+<!ENTITY indicStyleSquareBox.label "Square box">
 <!ENTITY indicStyleSquigglePixmap.label "Squiggle (Pixel Map)">
 <!ENTITY indicAlpha.label "Alpha (0&#8211;256):">
 <!ENTITY indicColor.label "Color:">
 <!ENTITY indicDrawUnderneath.label "Draw indicator underneath the text">
+<!ENTITY label.4 "4">
+<!ENTITY label.5 "5">
+<!ENTITY label.6 "6">
+<!ENTITY label.7 "7">
+<!ENTITY label.8 "8">
+<!ENTITY label.9 "9">
+<!ENTITY label.10 "10">
+<!ENTITY label.11 "11">
+<!ENTITY label.12 "12">
+<!ENTITY label.13 "13">
+<!ENTITY label.14 "14">
+<!ENTITY label.15 "15">
+<!ENTITY label.16 "16">
+<!ENTITY label.18 "18">
+<!ENTITY label.20 "20">
+<!ENTITY label.24 "24">
+<!ENTITY label.26 "26">
+<!ENTITY label.28 "28">
+<!ENTITY label.32 "32">
+<!ENTITY label.36 "36">
+<!ENTITY label.40 "40">
+<!ENTITY label.48 "48">
+<!ENTITY label.56 "56">
+<!ENTITY label.64 "64">
+<!ENTITY label.72 "72">
+<!ENTITY label.73 "7.3">
+<!ENTITY label.74 "7.4">
+<!ENTITY label.75 "7.5">
+<!ENTITY label.76 "7.6">
+<!ENTITY label.80 "8.0">
+<!ENTITY label.81 "8.1">
+<!ENTITY label.82 "8.2">
+<!ENTITY label.83 "8.3">
+<!ENTITY label.84 "8.4">
+<!ENTITY label.85 "8.5">
+<!ENTITY label.86 "8.6">

@@ -852,7 +852,7 @@ class CplnTestCase(CodeIntelTestCase):
                 $b->something(<|>);
             }
        """))
-        calltip = "something(string $s)\n@param string $s"
+        calltip = "something(string $s)\n\n<string> $s  - "
         self.assertCalltipIs(markedup_content, calltip)
 
     @tag("bug101460")
@@ -868,7 +868,7 @@ class CplnTestCase(CodeIntelTestCase):
                 $b->something(<|>);
             }
        """))
-        calltip = "something(string $s)\n@param string $s"
+        calltip = "something(string $s)\n\n<string> $s  - "
         self.assertCalltipIs(markedup_content, calltip)
 
     def test_calltip_call_signature_for_builtins(self):
@@ -2331,9 +2331,9 @@ EOD;
             $hw_inst->printWorld(<2>);
         """)))
         self.assertCalltipIs(markup_text(content, pos=positions[1]),
-                             "printHello()\nPrint the word hello.")
+                             "printHello()\n\nPrint the word hello.")
         self.assertCalltipIs(markup_text(content, pos=positions[2]),
-                             "printWorld()\nPrint the word world.")
+                             "printWorld()\n\nPrint the word world.")
 
     @tag("bug83192", "php53")
     def test_php_namespace_completions(self):
@@ -2711,9 +2711,9 @@ EOD;
             $bar = new Bar(<2>); // should show Foo constructor calltip
         """)))
         self.assertCalltipIs(markup_text(content, pos=positions[1]),
-                             "Foo(mixed $arg1)\nConstructor\n@param mixed $arg1")
+                             "Foo(mixed $arg1)\n\nConstructor\n<mixed> $arg1  - ")
         self.assertCalltipIs(markup_text(content, pos=positions[2]),
-                             "Foo(mixed $arg1)\nConstructor\n@param mixed $arg1")
+                             "Foo(mixed $arg1)\n\nConstructor\n<mixed> $arg1  - ")
 
     @tag("bug90846")
     def test_class_chained_completion(self):
@@ -3171,6 +3171,73 @@ EOD;
                         ("class", "ArrayIterator"),
                         ("class", "DOMDocument"),
                     ])
+
+    @tag("pr44")
+    def test_resolve_methods_returning_this(self):
+        content, positions = unmark_text(dedent(php_markup("""\
+            class A {
+                public function a() {return $this;}
+                public function b() {return $this;}
+            }
+            class B extends A {
+                public function a() {return $this;}
+                public function c() {return $this;}
+            }
+            $b = new B;
+            $b->b()-><1>c();
+        """)))
+        self.assertCompletionsInclude(markup_text(content, pos=positions[1]),
+                [
+                    ("function", "c"),
+                ])
+
+        content, positions = unmark_text(dedent(php_markup("""\
+            class MyClass {
+                public function obj() {
+                    return $this;
+                }
+                public function obj2() {
+                    return $this->obj();
+                }
+                public function call() {
+                    echo "Called";
+                }
+            }
+            $obj = new MyClass();
+            $obj-><1>obj2()-><2>obj()-><3>call();
+        """)))
+        for pos in (1, 2, 3):
+            self.assertCompletionsInclude(markup_text(content, pos=positions[pos]),
+                    [
+                        ("function", "obj"),
+                        ("function", "obj2"),
+                        ("function", "call"),
+                    ])
+
+    @tag("bug106103")
+    def test_instance_static_class_completions(self):
+        content, positions = unmark_text(dedent(php_markup("""\
+            class class1 {
+              private static $instance;
+              public static function get_instance() {
+                if (self::$instance == null) self::$instance = new self;
+                return self::$instance;
+              }
+              public static function call() { echo 1; }
+            }
+            $obj = class1::<1>get_instance(<2>);
+            $obj::<3>call(<4>);
+        """)))
+        self.assertCompletionsInclude(markup_text(content, pos=positions[1]),
+            [
+                ("function", "call"),
+                ("function", "get_instance"),
+            ])
+        self.assertCompletionsInclude(markup_text(content, pos=positions[3]),
+            [
+                ("function", "call"),
+                ("function", "get_instance"),
+            ])
 
 class IncludeEverythingTestCase(CodeIntelTestCase):
     lang = "PHP"
@@ -3998,6 +4065,109 @@ class IncludeEverythingTestCase(CodeIntelTestCase):
         self.assertCompletionsInclude(markup_text(content, pos=positions[2]),
             [("namespace", "Baz")])
 
+    @tag("php53")
+    def test_namespace_use_no_function_or_const(self):
+        test_dir = join(self.test_dir, "test_namespace_use_no_function_or_const")
+        test_content, test_positions = unmark_text(php_markup(dedent(r"""
+            use nsnofuncorclass\narf\<1>myfunc
+        """)))
+        manifest = [
+            (join(test_dir, "nsnofuncorclass.php"), php_markup(dedent(r"""
+            namespace nsnofuncorclass\narf {
+                function myfunc() { }
+                class myclass { }
+                const myconst = 1;
+            }
+            """))),
+            (join(test_dir, "test_nsnofuncorclass.php"), test_content),
+        ]
+        for filepath, content in manifest:
+            writefile(filepath, content)
+
+        buf = self.mgr.buf_from_path(join(test_dir, "test_nsnofuncorclass.php"),
+                                     lang=self.lang)
+        self.assertCompletionsAre2(buf, test_positions[1],
+            [("class", "myclass")])
+
+    @tag("php56")
+    def test_namespace_use_function(self):
+        test_dir = join(self.test_dir, "test_namespace_use_function")
+        test_content, test_positions = unmark_text(php_markup(dedent(r"""
+            use <1>function <2>nsusefunc\<3>narf\<4>myfunc
+            myf<5>unc(<6>);
+        """)))
+        manifest = [
+            (join(test_dir, "nsusefunc.php"), php_markup(dedent(r"""
+            namespace nsusefunc\narf {
+                function myfunc() { }
+                class myclass { }
+                const myconst = 1;
+            }
+            """))),
+            (join(test_dir, "test_nsusefunc.php"), test_content),
+        ]
+        for filepath, content in manifest:
+            writefile(filepath, content)
+
+        buf = self.mgr.buf_from_path(join(test_dir, "test_nsusefunc.php"),
+                                     lang=self.lang)
+        self.assertCompletionsInclude2(buf, test_positions[1],
+            [("keyword", "const"),
+             ("keyword", "function"),
+             ("namespace", "nsusefunc")])
+        self.assertCompletionsDoNotInclude2(buf, test_positions[2],
+            [("keyword", "const"),
+             ("keyword", "function")])
+        self.assertCompletionsInclude2(buf, test_positions[2],
+            [("namespace", "nsusefunc")])
+        self.assertCompletionsAre2(buf, test_positions[3],
+            [("namespace", "narf")])
+        self.assertCompletionsAre2(buf, test_positions[4],
+            [("function", "myfunc")])
+        self.assertCompletionsAre2(buf, test_positions[5],
+            [("function", "myfunc")])
+        self.assertCalltipIs2(buf, test_positions[6],
+            "myfunc()")
+
+    @tag("php56")
+    def test_namespace_use_const(self):
+        test_dir = join(self.test_dir, "test_namespace_use_const")
+        test_content, test_positions = unmark_text(php_markup(dedent(r"""
+            use <1>function <2>nsuseconst\<3>narf\<4>myfunc
+            myf<5>unc(<6>);
+        """)))
+        manifest = [
+            (join(test_dir, "nsuseconst.php"), php_markup(dedent(r"""
+            namespace nsuseconst\narf {
+                function myfunc() { }
+                class myclass { }
+                const myconst = 1;
+            }
+            """))),
+            (join(test_dir, "test_nsuseconst.php"), test_content),
+        ]
+        for filepath, content in manifest:
+            writefile(filepath, content)
+
+        buf = self.mgr.buf_from_path(join(test_dir, "test_nsuseconst.php"),
+                                     lang=self.lang)
+        self.assertCompletionsInclude2(buf, test_positions[1],
+            [("keyword", "const"),
+             ("keyword", "function"),
+             ("namespace", "nsuseconst")])
+        self.assertCompletionsDoNotInclude2(buf, test_positions[2],
+            [("keyword", "const"),
+             ("keyword", "function")])
+        self.assertCompletionsInclude2(buf, test_positions[2],
+            [("namespace", "nsuseconst")])
+        self.assertCompletionsAre2(buf, test_positions[3],
+            [("namespace", "narf")])
+        self.assertCompletionsAre2(buf, test_positions[4],
+            [("function", "myfunc")])
+        self.assertCompletionsAre2(buf, test_positions[5],
+            [("function", "myfunc")])
+        self.assertCalltipIs2(buf, test_positions[6],
+            "myfunc()")
 
 class DefnTestCase(CodeIntelTestCase):
     lang = "PHP"
@@ -4392,6 +4562,9 @@ class DefnTestCase(CodeIntelTestCase):
                     foreach ($projectPhaseDates as $non_updatable_item<3>) {
                         $non_updatable_item<4>['start_date'] += 100;
                     }
+                    foreach ($projectPhaseDates['subarray'] as $subkey<5> => $subvalue<6>) {
+                        $subkey<7> + $subvalue<8>;
+                    }
                 }
             }
         """)))
@@ -4408,7 +4581,92 @@ class DefnTestCase(CodeIntelTestCase):
             self.assertDefnMatches2(buf, positions[pos], path=path,
                                     ilk="variable", name="non_updatable_item",
                                     line=7)
+        for pos in (5, 7):
+            self.assertDefnMatches2(buf, positions[pos], path=path,
+                                    ilk="variable", name="subkey",
+                                    line=10)
+        for pos in (6, 8):
+            self.assertDefnMatches2(buf, positions[pos], path=path,
+                                    ilk="variable", name="subvalue",
+                                    line=10)
+            
+    def testAnonymousClass(self):
+        content, positions = unmark_text(php_markup(dedent("""\
+            class SomeClass {}
+            interface SomeInterface {}
+            trait SomeTrait {}
+            
+            var_dump(new class() extends <1>SomeClass implements <2>SomeInterface {
+                private $num;
+                
+                public function __<3>construct($num)
+                {
+                    $this-><4>num = $num;
+                }
+                
+                use <5>SomeTrait;
+            });
+        """)))
+        # Single base class
+        self.assertCompletionsInclude(markup_text(content, pos=positions[1]),
+            [("class", "SomeClass")])
+        self.assertCompletionsInclude(markup_text(content, pos=positions[2]),
+            [("interface", "SomeInterface")])
+        self.assertCompletionsInclude(markup_text(content, pos=positions[3]),
+            [("function", "__construct")])
+        self.assertCompletionsInclude(markup_text(content, pos=positions[4]),
+            [("variable", "num")])
+        self.assertCompletionsInclude(markup_text(content, pos=positions[5]),
+            [("trait", "SomeTrait")])
 
+    def testGroupedUse(self):
+        content, positions = unmark_text(php_markup(dedent("""\
+            namespace Test {
+                class FooBar {}
+                class BarBaz {}
+            }
+            
+            use Test\{FooBar, BarBaz as FooBoo}
+            
+            Foo<1>
+        """)))
+        # Single base class
+        self.assertCompletionsInclude(markup_text(content, pos=positions[1]),
+            [("namespace", "FooBar"),
+             ("namespace", "FooBoo")])
+
+    def testGroupedUse2(self):
+        content, positions = unmark_text(php_markup(dedent("""\
+            class Test {
+                function foobar() {}
+                function barbaz() {}
+            }
+            
+            use function Test\{foo as barfoo, barbaz};
+            
+            bar<1>
+        """)))
+        # Single base class
+        self.assertCompletionsInclude(markup_text(content, pos=positions[1]),
+            [("function", "barbaz"),
+             ("function", "barfoo")])
+        
+    @tag("bug 123")
+    def test_calltip_builtin_function(self):
+        markedup_content = php_markup(dedent("""\
+            date(<|>)
+        """))
+        calltip = "date(string format [, long timestamp])\nFormat a local date time"
+        self.assertCalltipIs(markedup_content, calltip)
+        
+        # Now test a variable whose name is the same as the builtin function.
+        markedup_content = php_markup(dedent("""\
+            $date = date("d");
+            date(<|>)
+        """))
+        calltip = "date(string format [, long timestamp])\nFormat a local date time"
+        self.assertCalltipIs(markedup_content, calltip)
+    
 
 class EscapingTestCase(CodeIntelTestCase):
     lang = "PHP"
@@ -4424,7 +4682,7 @@ class EscapingTestCase(CodeIntelTestCase):
         ?>
         """))
         self.assertCalltipIs(markup_text(content, pos=positions[1]),
-                             "func_bug85176()\nA funky char  is here.")
+                             "func_bug85176()\n\nA funky char  is here.")
 
 
 #---- mainline

@@ -44,6 +44,7 @@ import os
 import logging
 import re
 import sys
+import math
 
 from xpcom import components, nsError, ServerException, COMException
 from xpcom.server import WrapObject, UnwrapObject
@@ -99,17 +100,29 @@ class Scheme(SchemeBase):
         SchemeBase.__init__(self, fname, userDefined, unsaved)
         namespace = {}
         if not unsaved:
-            if not self._execfile(fname, namespace):
+            namespace = self._execfile(fname)
+            if not namespace:
                 return False
+            import json
         self._loadSchemeSettings(namespace, upgradeSettings=(not unsaved))
         return True
 
-    _current_scheme_version = 13
+    _current_scheme_version = 15
 
-    def _execfile(self, fname, namespace):
+    def _execfile(self, fname):
         try:
+            fpath = os.path.dirname(fname)
+            sys.path.append(fpath)
+
+            namespace = {}
             execfile(fname, namespace)
-            return True
+
+            sys.path.remove(fpath)
+
+            if namespace.get("exports"):
+                return namespace["exports"]
+
+            return namespace
         except SyntaxError:
             log.exception("Syntax Error loading scheme %s:", fname)
             return False
@@ -124,6 +137,7 @@ class Scheme(SchemeBase):
         self._colors = namespace.get('Colors', {})
         self._booleans = namespace.get('Booleans', {})
         self._indicators = namespace.get('Indicators', {})
+        self.defaultStyle = {}
 
         version = namespace.get('Version', 1)
         # Scheme upgrade handling.
@@ -299,6 +313,11 @@ class Scheme(SchemeBase):
                     if name not in self._colors:
                         self._colors[name] = newColors[name]
                 version += 1
+                    
+            if version == 14:
+                if 'multiple_caret_area' in self._indicators:
+                    del self._indicators['multiple_caret_area']
+                version += 1
 
             try:
                 self.save()
@@ -309,8 +328,8 @@ class Scheme(SchemeBase):
                          self.name, ex)
 
     def revert(self):
-        namespace = {}
-        if self._execfile(self.fname, namespace):
+        namespace = self._execfile(self.fname)
+        if namespace:
             self._loadSchemeSettings(namespace)
             self.isDirty = 0
 
@@ -478,7 +497,10 @@ class Scheme(SchemeBase):
     
     def setFont(self, style, font):
         self._set('', style, font, 'face')
-    
+
+    def setLineSpacing(self, style, spacing):
+        self._set('', style, spacing, 'lineSpacing')
+
     def setFaceType(self, language, style, useFixed):
         self._set(language, style, useFixed, 'useFixed')
     
@@ -512,7 +534,7 @@ class Scheme(SchemeBase):
             except KeyError:
                 log.exception("No key: self._commonStyles[fallbackstyle=%r], style=%r, attribute=%r", fallbackstyle, style, attribute)
                 raise
-        return styleBlock.get(attribute, self.defaultStyle[attribute])
+        return styleBlock.get(attribute, self.defaultStyle.get(attribute))
 
     def _getAspectFromAppliedData(self, style, attribute):
         aspect = None
@@ -539,6 +561,16 @@ class Scheme(SchemeBase):
         scincolor = self._getAspect(language, style, 'fore')
         #print "asked for fore of ", language, style, "got", scincolor
         return scincolor2mozcolor(scincolor)
+
+    def getCommon(self, style, key):
+        color = None
+        if style in self._commonStyles:
+             color = self._commonStyles[style].get(key, None)
+
+        if color:
+            return  scincolor2mozcolor(color)
+        else:
+            return ""
         
     def getBack(self, language, style):
         #style = self._fixstyle(style)
@@ -559,10 +591,48 @@ class Scheme(SchemeBase):
         #pprint.pprint(self._appliedData)
         return italic
 
-    def getFont(self, style):
+    def getFont(self, style, fontstack = False):
         #style = self._fixstyle(style)
         # this returns a real font label
-        return self._getAspectFromAppliedData(style, 'face')
+        font = self._getAspectFromAppliedData(style, 'face')
+
+        if fontstack:
+            return font
+        else:
+            return self._getFontEffective(font)
+
+    # Parses the font stack and returns the first font that is installed on the
+    # current system
+    # Example font stack: '"Source Code Pro", Consolas, Inconsolata, Monospace'
+    def _getFontEffective(self, fontStack):
+        if not fontStack:
+            return
+
+        # Parse the CSS font stack
+        fontStack = fontStack.split(",")
+        for i in range(len(fontStack)):
+            fontStack[i] = re.sub(r'^[\'"\s]*|[\'"\s]*$', '', fontStack[i])
+
+        # Get all available fonts
+        enumerator = components.classes["@mozilla.org/gfx/fontenumerator;1"].createInstance()
+        enumerator = enumerator.QueryInterface(components.interfaces.nsIFontEnumerator)
+        fonts = set(enumerator.EnumerateAllFonts())
+
+        # Check if any fonts in the font stack match the ones on the system
+        # and return the first one that does
+        for fontName in fontStack:
+            if fontName in fonts:
+                return fontName
+
+        # Fall back on last font in fontstack
+        return fontStack[-1]
+
+    def getLineSpacing(self, style):
+        val = self._getAspectFromAppliedData(style, 'lineSpacing')
+        if val is None:
+            log.debug("Style does not have lineSpacing, returning 0")
+            return 0
+        return val
 
     def _getFallbackStyle(self, style):
         if style.endswith('_fixed'):
@@ -661,6 +731,9 @@ class Scheme(SchemeBase):
         if prop_font_style_name in self._commonStyles:
             propStyle.update(self._commonStyles[prop_font_style_name])
 
+        fixedStyle['face'] = self._getFontEffective(fixedStyle['face'])
+        propStyle['face'] = self._getFontEffective(propStyle['face'])
+
         useFixed = self._booleans['preferFixed']
         if alternateType: useFixed = not useFixed
         if ('default' in currentLanguageStyles and
@@ -672,6 +745,7 @@ class Scheme(SchemeBase):
             defaultStyle = propStyle
         if 'default' in currentLanguageStyles:
             defaultStyle.update(currentLanguageStyles['default'])
+
         self._appliedData['default'] = defaultStyle
         self.defaultStyle = defaultStyle
         for aspect, setter in setters.items():
@@ -682,6 +756,15 @@ class Scheme(SchemeBase):
         else:
             font = self._buildFontSpec(defaultStyle['face'], encoding)
             scimoz.styleSetFont(scimoz.STYLE_DEFAULT, font)
+
+        spacing = float(defaultStyle.get("lineSpacing", 0))
+
+        extraDescent = int(math.ceil(spacing / 2))
+        extraAscent = int(math.floor(spacing / 2))
+
+        scimoz.extraDescent = extraDescent
+        scimoz.extraAscent = extraAscent
+
         scimoz.styleClearAll() # now all styles are the same
         defaultUseFixed = useFixed
         langStyles = GetLanguageStyles(language)
@@ -734,7 +817,9 @@ class Scheme(SchemeBase):
                                 style.update(defaultSubLanguageStyles.get(common_name, {}))
                     except:
                         log.exception("Failed to get sub-language for family %s from language %s ", family, language)
-                        
+
+                style['face'] = self._getFontEffective(style['face'])
+
                 self._appliedData[common_name] = style
                 if useFixed != defaultUseFixed:
                     if not sys.platform.startswith('win'):
@@ -836,6 +921,7 @@ class Scheme(SchemeBase):
             'style' :           scimoz.indicSetStyle,
             'color' :           scimoz.indicSetFore,
             'alpha' :           scimoz.indicSetAlpha,
+            'outline_alpha' :   scimoz.indicSetOutlineAlpha,
             'draw_underneath' : scimoz.indicSetUnder,
         }
         for indic_name in self._indicators:
@@ -843,6 +929,8 @@ class Scheme(SchemeBase):
             if not indic_no:
                 log.warn("applyScheme:: no indicator for name %r", indic_name)
                 continue
+            if "alpha" in self._indicators[indic_name]:
+                self._indicators[indic_name]["outline_alpha"] = self._indicators[indic_name]["alpha"]
             for key, value in self._indicators[indic_name].items():
                 setter = indicator_setters.get(key)
                 if setter is None:
@@ -854,6 +942,17 @@ class Scheme(SchemeBase):
                         setter(i, value)
                 else:
                     setter(indic_no, value)
+        
+        # Set annotation styles for linter based on lint indicator colors.
+        cikoILR = components.interfaces.koILintResult
+        scimoz.releaseAllExtendedStyles()
+        scimoz.annotationStyleOffset = scimoz.allocateExtendedStyles(2)
+        scimoz.styleSetFore(scimoz.annotationStyleOffset + cikoILR.ANNOTATION_ERROR,
+                            scimoz.indicGetFore(cikoILR.DECORATOR_ERROR))
+        scimoz.styleSetItalic(scimoz.annotationStyleOffset + cikoILR.ANNOTATION_ERROR, True);
+        scimoz.styleSetFore(scimoz.annotationStyleOffset + cikoILR.ANNOTATION_WARNING,
+                            scimoz.indicGetFore(cikoILR.DECORATOR_WARNING))
+        scimoz.styleSetItalic(scimoz.annotationStyleOffset + cikoILR.ANNOTATION_WARNING, True);
 
         #XXX Note: we used to apply some style prefs for the foreground of
         #    some of our markers here. This was limited in scope (only some
@@ -953,6 +1052,10 @@ class Scheme(SchemeBase):
     @property
     def backgroundColor(self):
         return scincolor2mozcolor(self._defaultBackColor())
+
+    @property
+    def foregroundColor(self):
+        return scincolor2mozcolor(self._defaultForeColor())
 
     def getHighlightColorInfo(self, languageObj):
         """
@@ -1298,7 +1401,7 @@ class KoScintillaSchemeService(SchemeServiceBase):
                      "'" + "', '".join(dangerous_keywords) + "'"])
                 raise ServerException(nsError.NS_ERROR_INVALID_ARG, msg)
         
-        targetPath = os.path.join(self._userSchemeDir, schemeBaseName)
+        targetPath = os.path.join(self._userSchemeDir, schemeBaseName + '.ksf')
         fd = open(targetPath, "w")
         fd.write(data)
         fd.close()

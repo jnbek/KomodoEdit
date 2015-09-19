@@ -42,6 +42,7 @@
 
 <?xml-stylesheet href="chrome://komodo/skin/" type="text/css"?>
 <?xml-stylesheet href="chrome://komodo/skin/bindings/widgets.css" type="text/css"?>
+<?xml-stylesheet href="chrome://komodo/skin/bindings/buttons.css" type="text/css"?>
 <?xml-stylesheet href="chrome://komodo/skin/prefs/prefs.css" type="text/css"?>
 
 <window xmlns:html="http://www.w3.org/1999/xhtml"
@@ -58,21 +59,12 @@
     <!-- This main vbox is to ensure *all* the pref widgets are accessible,
          as it adds a scrollbar when the contents are too long. -->
     <vbox id="ui-prefs-vbox" flex="1" class="autoscroll">
-
-        <groupbox orient="vertical" id="pref_appearance_toolbars">
-            <caption label="&startPage.label;"/>
-      
-            <checkbox id="show_start_page"
-                      label="&showKomodoStartPageOnStartup.label;"
-                      pref="true"
-                      prefstring="show_start_page"
-                      prefattribute="checked"/>
-        </groupbox>
         
         <groupbox id="pref_appearance_interface">
             <caption label="&interface.caption;" />
 <!-- #if PLATFORM == "linux" -->
             <hbox>
+                <spacer width="80"/>
                 <checkbox id="koSkin_use_gtk_detection"
                           label="&useGtkDetection.label;"
                           pref="true"
@@ -82,9 +74,10 @@
             </hbox>
 <!-- #endif -->
             <!-- Skins -->
-            <hbox align="center" id="pref_appearance_skin_hbox" style="margin-left: 20px">
+            <hbox align="center" id="pref_appearance_skin_hbox">
                 <label id="pref_appearance_skin_label"
-                       value="&skin.label;" />
+                       value="&skin.label;"
+                        width="70"/>
                 <menulist id="koSkin_custom_skin"
                           pref="true"
                           preftype="string"
@@ -105,11 +98,15 @@
 <!-- #endif -->
                     </menupopup>
                 </menulist>
+                <button class="packages-icon"
+                        tooltip="Get More Skins"
+                        oncommand="require('scope-packages/packages').openCategory('skins')"/>
             </hbox>
             <!-- Icons -->
-            <hbox align="center" style="margin-left: 20px">
+            <hbox align="center">
                 <label id="pref_appearance_iconsets_label"
-                       value="&iconset.label;" />
+                       value="&iconset.label;"
+                       width="70"/>
                 <menulist id="koSkin_custom_icons"
                           pref="true"
                           preftype="string"
@@ -120,6 +117,29 @@
                     </menupopup>
                 </menulist>
             </hbox>
+            
+            <!-- HUD Skinning -->
+            <hbox>
+                <spacer width="80"/>
+                <checkbox id="koSkin_scheme_skinning"
+                          label="&enableSchemeSkinning.label;"
+                          pref="true"
+                          preftype="boolean"
+                          prefdefault="true"
+                          prefattribute="checked"/>
+            </hbox>
+            
+            <!-- Scrollbar Skinning -->
+            <hbox>
+                <spacer width="80"/>
+                <checkbox id="koSkin_use_custom_scrollbars"
+                          label="&skinEditorScrollbars.label;"
+                          pref="true"
+                          preftype="boolean"
+                          prefdefault="true"
+                          prefattribute="checked"/>
+            </hbox>
+            
         </groupbox>
 
         <groupbox id="ui.tabs.sidepanes.groupbox">
@@ -210,7 +230,7 @@
             </hbox>
         </groupbox>
 
-        <groupbox>
+        <groupbox class="advanced">
             <caption label="&mostRecentlyUsed.label;"/>
             <hbox align="center">
                 <textbox id="mruProjectSize" size="3" maxlength="2"
@@ -224,6 +244,16 @@
                            prefattribute="value"/>
                 <label control="mruFileSize" value="&numberOfFiles.label;"/>
             </hbox>
+        </groupbox>
+
+        <groupbox orient="vertical">
+            <caption label="&activeStateNotificationMessages.label;"/>
+
+            <checkbox id="activestate_notification_messages_enabled"
+                      label="&activeStateNotificationMessagesEnabled.label;"
+                      tooltiptext="&activeStateNotificationMessagesEnabled.tooltiptext;"
+                      pref="true"
+                      prefattribute="checked"/>
         </groupbox>
 
     </vbox>

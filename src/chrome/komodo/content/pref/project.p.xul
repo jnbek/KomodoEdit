@@ -46,6 +46,8 @@
 <?xml-stylesheet href="chrome://komodo/skin/global/global.css" type="text/css"?>
 <?xml-stylesheet href="chrome://komodo/skin/bindings/buttons.css" type="text/css"?>
 
+<?xml-stylesheet href="less://komodo/skin/prefs/pref-window.less" type="text/css"?>
+
 <window id="prefProjectsWindow"
         xmlns:html="http://www.w3.org/1999/xhtml"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -80,6 +82,7 @@
     var file = null;
     var prefInvokeType;
     var koFilterBox;
+    var prefset = null;
 
     var gprefs = Components.classes["@activestate.com/koPrefService;1"]
                   .getService(Components.interfaces.koIPrefService).prefs;
@@ -97,7 +100,6 @@
     try {
         // get the project prefs passed in via the window arguments, otherwise
         // get the current project preferences
-        var prefset = null;
         if (window.arguments && window.arguments[0] != null) {
             part = window.arguments[0].part;
             view = window.arguments[0].view;
@@ -205,7 +207,41 @@
         }
         gprefs.setStringPref('defaultSelectedSubPref',
                              hPrefWindow.helper.getSelectedItemId());
+        
+        onApplied();
+        
         return true;
+    }
+
+    function doApply() {
+        if ( ! hPrefWindow.onApply())
+            return false;
+
+        // The pref change itself might trigger more pref changes from
+        // observers, give them a bit of time to modify prefs further
+        // before we reinitialize
+        // todo: use actual events for this
+        // todo: block pref ui while this is in progress
+        setTimeout(function()
+        {
+            hPrefWindow.orig_prefset = null;
+            hPrefWindow.init(prefset);
+        }, 500);
+        
+        onApplied();
+        
+        return true;
+    }
+    
+    function onApplied() {
+        setTimeout(function() {
+            try {
+                var _ko= ko.windowManager.getMainWindow().ko;
+                _ko.places.manager.moveToProjectDir(_ko.projects.manager.currentProject)
+            } catch (e) {
+                log.exception(e);
+            }
+        }, 0);
     }
 
     function doCancel() {
@@ -296,7 +332,6 @@
             <deck id="pref-deck" selectedIndex="0" flex="1">
                <!-- tree sidebar -->
                <tree id="prefsTree" style="min-width: 14em;"
-                     class="inset"
                      persist="width"
                      hidecolumnpicker="true" seltype="single"
                      onselect="if( hPrefWindow ) hPrefWindow.switchPage();">
@@ -474,7 +509,6 @@
                 </tree>
                 <!-- The dynamically built nsITreeView tree -->
                 <tree id="filteredPrefsTree" style="min-width: 14em;"
-                      class="inset"
                       persist="width"
                       hidecolumnpicker="true" seltype="single"
                       onselect="if( hPrefWindow ) hPrefWindow.switchPage();">
@@ -488,6 +522,10 @@
                     <treechildren id="panelChildrenDynamic" flex="1" />
                 </tree>
             </deck>
+            <hbox style="padding-top: 5px">
+                <!-- Ensure same height as buttons box -->
+                <button label="X" style="visibility: hidden"/> 
+            </hbox>
         </vbox>
         <splitter orient="horizontal"
                   style="margin: 0px; padding: 0px; border: none;"/>
@@ -495,13 +533,13 @@
         <vbox flex="1" style="min-width: 30em;">
             <deck id="panelFrame" name="panelFrame" style="width:0px"
                     flex="1"/>
-            <separator/>
 
-            <hbox>
+            <hbox style="padding-top: 5px;">
+                <button id="prefs_help_button" label="&help.label;" accesskey="&prefsHelpButton.accesskey;" oncommand="doHelp();"/>
                 <separator flex="1"/>
                 <button label="&OK.label;" default="true" oncommand="doOk();"/>
                 <button label="&cancel.label;" oncommand="doCancel();"/>
-                <button id="prefs_help_button" label="&help.label;" accesskey="&prefsHelpButton.accesskey;" oncommand="doHelp();"/>
+                <button label="&Apply.label;" default="true" oncommand="doApply();"/>
             </hbox>
         </vbox>
     </hbox>

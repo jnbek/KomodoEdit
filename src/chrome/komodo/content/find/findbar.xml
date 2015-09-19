@@ -50,10 +50,6 @@
   <binding id="findbar">
     <content collapsed="true">
       <xul:hbox class="ko-findbar-container">
-        <xul:toolbarbutton anonid="closebutton"
-                           class="ko-findbar-closebutton"
-                           tooltiptext="&findbar.close.tooltiptext;"
-                           oncommand="close();"/>
         <xul:textbox anonid="textbox"
                      emptytext="&findbar.prompt;"
                      oninput="onInput();"
@@ -131,6 +127,11 @@
             <xul:label class="ko-findbar-status-text" anonid="status-text"/>
           </xul:hbox>
         </xul:hbox>
+        <xul:spacer flex="1"/>
+        <xul:toolbarbutton anonid="closebutton"
+                           class="ko-findbar-closebutton"
+                           tooltiptext="&findbar.close.tooltiptext;"
+                           oncommand="close();"/>
       </xul:hbox>
     </content>
     <implementation implements="nsIController">
@@ -480,6 +481,13 @@
         var scimoz = this._view.scimoz;
         this.text += scimoz.getWCharAt(Math.max(scimoz.currentPos, scimoz.anchor));
         this.controller.search(this.text, true);
+        event.stopPropagation();
+      ]]>
+      </handler>
+      <handler event="keypress" keycode="VK_RETURN">
+      <![CDATA[
+        // Enter keypress to go to next search match
+        this.controller.searchAgain();
         event.stopPropagation();
       ]]>
       </handler>

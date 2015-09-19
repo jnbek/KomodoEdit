@@ -91,8 +91,8 @@
             desc="&userInterfaceShowHideMenubar.desc;"
             oncommand="ko.commands.doCommandAsync('cmd_toggleMenubar', event)"
             persist="checked"
-            checked="true"
-            autoCheck="false" />
+            checked="false"
+             />
 <!-- #endif -->
         <broadcaster
             id="cmd_toggleToolbars" key="key_cmd_toggleToolbars"
@@ -151,13 +151,6 @@
             persist="checked"
             oncommand="ko.commands.doCommandAsync('cmd_viewfindtoolbar', event)"/>
         <broadcaster
-            id="cmd_viewopentoolbar" key="key_cmd_viewopentoolbar"
-            desc="&userInterfaceShowHideOpenToolbar.desc;"
-            autoCheck="false"
-            checked="false"
-            persist="checked"
-            oncommand="ko.commands.doCommandAsync('cmd_viewopentoolbar', event)"/>
-        <broadcaster
             id="cmd_openextmgr"
             desc="&openAddonsDialog.desc;"
             oncommand="ko.launch.openAddonsMgr();"/>
@@ -191,10 +184,6 @@
             id="cmd_editPrefs" key="key_cmd_editPrefs"
             oncommand="ko.commands.doCommandAsync('cmd_editPrefs', event);"
             desc="&generalPreferences.desc;"/>
-        <command
-            id="cmd_openStartPage" key="key_cmd_openStartPage"
-            oncommand="ko.commands.doCommandAsync('cmd_openStartPage', event)"
-            desc="&helpStartPage.desc;"/>
         <command
             id="cmd_newWindow" key="key_cmd_newWindow"
             oncommand="ko.commands.doCommandAsync('cmd_newWindow', event)"
@@ -407,6 +396,10 @@
             id="cmd_openProject" key="key_cmd_openProject"
             oncommand="ko.commands.doCommandAsync('cmd_openProject', event)"
             desc="&generalOpenProject.desc;"/>
+        <command
+            id="cmd_sampleProject" key="key_cmd_sampleProject"
+            oncommand="ko.commands.doCommandAsync('cmd_sampleProject', event)"
+            desc="&generalSampleProject.desc;"/>
         <command
             id="cmd_openProjectNewWindow" key="key_cmd_openProjectNewWindow"
             oncommand="ko.commands.doCommandAsync('cmd_openProjectNewWindow', event)"
@@ -1232,20 +1225,25 @@
             oncommand="ko.commands.doCommand('cmd_lineDelete')"
             desc="&editorDeleteLine.desc;"/>
         <command
-            id="cmd_lineDuplicate" key="key_cmd_lineDuplicate"
+            id="cmd_lineDuplicateUp" key="key_cmd_lineDuplicateUp"
             disabled="true"
-            oncommand="ko.commands.doCommand('cmd_lineDuplicate')"
-            desc="&editorDuplicateLine.desc;"/>
+            oncommand="ko.commands.doCommand('cmd_lineDuplicateUp')"
+            desc="&editorDuplicateLineUp.desc;"/>
         <command
-            id="cmd_lineOrSelectionDuplicate" key="key_cmd_lineOrSelectionDuplicate"
+            id="cmd_lineDuplicateDown" key="key_cmd_lineDuplicateDown"
             disabled="true"
-            oncommand="ko.commands.doCommand('cmd_lineOrSelectionDuplicate')"
-            desc="&editorDuplicateLineOrSelection.desc;"/>
+            oncommand="ko.commands.doCommand('cmd_lineDuplicateDown')"
+            desc="&editorDuplicateLineDown.desc;"/>
         <command
-            id="cmd_lineTranspose" key="key_cmd_lineTranspose"
+            id="cmd_lineTransposeUp" key="key_cmd_lineTransposeUp"
             disabled="true"
-            oncommand="ko.commands.doCommand('cmd_lineTranspose')"
-            desc="&editorTransposeCurrentAndPreviousLines.desc;"/>
+            oncommand="ko.commands.doCommand('cmd_lineTransposeUp')"
+            desc="&editorTransposeLineUp.desc;"/>
+        <command
+            id="cmd_lineTransposeDown" key="key_cmd_lineTransposeDown"
+            disabled="true"
+            oncommand="ko.commands.doCommand('cmd_lineTransposeDown')"
+            desc="&editorTransposeLineDown.desc;"/>
 
         <!-- The remaining ones are only available when a scintilla-style
              editor has focus: optimization possible -->
@@ -1503,11 +1501,6 @@
             oncommand="ko.commands.doCommandAsync('cmd_tabAwarePaste', event)"
             disabled="true"
             desc="&editorTabAwarePaste.desc;"/>
-        <command
-            id="cmd_addAdditionalCaret" key="key_cmd_addAdditionalCaret"
-            oncommand="ko.commands.doCommandAsync('cmd_addAdditionalCaret', event)"
-            disabled="true"
-            desc="&addAdditionalCaret.desc;"/>
         <command
             id="cmd_addNextWordToCaretSet" key="key_cmd_addNextWordToCaretSet"
             oncommand="ko.commands.doCommandAsync('cmd_addNextWordToCaretSet', event)"

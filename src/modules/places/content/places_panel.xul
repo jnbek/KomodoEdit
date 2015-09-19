@@ -168,46 +168,49 @@
         resizeafter="farthest"
         ondblclick="ko.places.projects.toggleSubpanel()"
         collapse="after">
-      <hbox id="placesSubpanelSplitterHbox"
-            flex="1"
-            align="center">
-        <!-- Using a deck inside a splitter causes layout problems on Linux,
-             see bug 88126. This is unfortunate, as it makes it near
-             impossible to overlay with another widget.
-          -->
-        <label id="placesSubpanelSplitterProjectLabel">&projects.label;</label>
-        <!-- Note: We intentionally do not use a child 'menupopup' element
-          here because there is some interaction with the containing
-          splitter such that you can't invoke the menu entries, at least
-          on Mac. Using a separate 'popup' outside of the splitter is
-          a workaround. -->
-        <!-- Note #2: this menu comes from popup_project
-             via ko.places.projects.initProjectMRUCogMenu_MPV()
-           -->
-        <spacer flex="1"/>
-        <toolbarbutton id="placesSubpanelToggle"
-            buttonstyle="pictures"
-            oncommand="ko.places.projects.toggleSubpanel()"
-            persist="state"
-            state="collapsed" />
-        <spacer flex="1"/>
-        <toolbarbutton id="placesSubpanelProjectsTools_SPV"
-            buttonstyle="pictures"
-            type="menu"
-            orient="horizontal"
-            class="project-tools-icon"
-            popup="placesSubpanelProjectsToolsPopup_SPV"/>
-        <toolbarbutton id="placesSubpanelProjectsTools_MPV"
-            buttonstyle="pictures"
-            type="menu"
-            tooltiptext="&placesProjectMenu.tooltiptext;"
-            orient="horizontal"
-            class="project-tools-icon"
-            popup="placesSubpanelProjectsToolsPopup_MPV"/>
-            <!-- tooltiptext attr set dynamically in
-            project_places.js._updateSubpanelFromState
+      <vbox flex="1">
+        <hbox id="placesSubpanelSplitterHboxBorder"></hbox>
+        <hbox id="placesSubpanelSplitterHbox"
+              flex="1"
+              align="center">
+          <!-- Using a deck inside a splitter causes layout problems on Linux,
+               see bug 88126. This is unfortunate, as it makes it near
+               impossible to overlay with another widget.
             -->
-      </hbox>
+          <label id="placesSubpanelSplitterProjectLabel">&projects.label;</label>
+          <!-- Note: We intentionally do not use a child 'menupopup' element
+            here because there is some interaction with the containing
+            splitter such that you can't invoke the menu entries, at least
+            on Mac. Using a separate 'popup' outside of the splitter is
+            a workaround. -->
+          <!-- Note #2: this menu comes from popup_project
+               via ko.places.projects.initProjectMRUCogMenu_MPV()
+             -->
+          <spacer flex="1"/>
+          <toolbarbutton id="placesSubpanelToggle"
+              buttonstyle="pictures"
+              oncommand="ko.places.projects.toggleSubpanel()"
+              persist="state"
+              state="collapsed" />
+          <spacer flex="1"/>
+          <toolbarbutton id="placesSubpanelProjectsTools_SPV"
+              buttonstyle="pictures"
+              type="menu"
+              orient="horizontal"
+              class="project-tools-icon"
+              popup="placesSubpanelProjectsToolsPopup_SPV"/>
+          <toolbarbutton id="placesSubpanelProjectsTools_MPV"
+              buttonstyle="pictures"
+              type="menu"
+              tooltiptext="&placesProjectMenu.tooltiptext;"
+              orient="horizontal"
+              class="project-tools-icon"
+              popup="placesSubpanelProjectsToolsPopup_MPV"/>
+              <!-- tooltiptext attr set dynamically in
+              project_places.js._updateSubpanelFromState
+              -->
+        </hbox>
+      </vbox>
     </splitter>
 
     <deck id="placesSubpanelDeck" selectedIndex="0" orient="vertical"
@@ -396,7 +399,7 @@
                      intoplevel="true"/>
       <menuitem id="placesContextMenu_editProperties"
                 observes="cmd_editProperties"
-                label="&projectPreferences.label;"
+                label="&filePreferences.label;"
                 intoplevel="true"
                 disableIf="folder"
                 hideIf="project"
@@ -423,43 +426,37 @@
       <menuitem id="folder_context_newFileFromTemplate"
                 label="&newFilesPlace.label;"
                 accesskey="&folderContextNewFile.accesskey;"
-                class="menuitem-iconic"
-                image="chrome://komodo/skin/images/newTemplate.png"
+                class="menuitem-iconic new-template-icon"
                 oncommand="ko.places.projects.manager.addNewFile(event, this);"
                 />
       <menuitem id="folder_context_newFolder"
                 label="&newGroupPlace.label;"
                 accesskey="&newGroupPlace.accesskey;"
-                class="menuitem-iconic"
-                image="chrome://komodo/skin/images/new_folder.png"
+                class="menuitem-iconic new-folder-icon"
                 oncommand="ko.places.projects.manager.addGroup(event, this);"
                 />
       <menuitem id="folder_context_existingFile"
                 label="&existingFile.label;"
-                class="menuitem-iconic"
+                class="menuitem-iconic new-file-icon"
                 accesskey="&folderContextExistingFile.accesskey;"
-                image="chrome://komodo/skin/images/existing_file.png"
                 oncommand="ko.places.projects.manager.addExistingFile(event, this);"
                 />
       <menuitem id="folder_context_newLiveFolder"
                 label="&existingFolder.label;"
                 accesskey="&folderContextNewLiveFolder.accesskey;"
-                class="menuitem-iconic"
-                image="chrome://komodo/skin/images/folder-closed.png"
+                class="menuitem-iconic new-folder-icon"
                 oncommand="ko.places.projects.manager.addLiveFolder(event, this);"
                 />
       <menuitem id="folder_context_remoteFile"
                 label="&existingRemoteFile.label;"
-                class="menuitem-iconic"
+                class="menuitem-iconic remote-folder-icon"
                 accesskey="&folderContextRemoteFile.accesskey;"
-                image="chrome://komodo/skin/images/remote_file.png"
                 oncommand="ko.places.projects.manager.addRemoteFile(event, this);"
                 />
       <menuitem id="folder_context_remoteFolder"
                 label="&existingRemoteFolder.label;"
-                class="menuitem-iconic"
+                class="menuitem-iconic remote-file-icon"
                 accesskey="&existingRemoteFolder.accesskey;"
-                image="chrome://famfamfamsilk/skin/icons/folder_link.png"
                 oncommand="ko.places.projects.manager.addRemoteFolder(event, this);"
                 />
     </menupopup>

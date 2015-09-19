@@ -64,7 +64,6 @@ $cons->InstallInChrome('dialogs.js');
 $cons->InstallInChrome('otherdialogs.js');
 $cons->InstallInChrome('mru.js');
 $cons->InstallInChrome('color_functions.js');
-$cons->InstallInChrome('printing.js');
 $cons->InstallInChrome('stringutils.js');
 $cons->InstallInChrome('treeutils.js');
 $cons->InstallInChrome('uriparse.js');
@@ -95,13 +94,6 @@ $cons->InstallInChrome('widgets.js');
 $cons->Preprocess('skin.p.js', 'skin.js');
 $cons->InstallInChrome('skin.js');
 $cons->InstallInChrome('less.js');
-$cons->InstallInChrome('multipleCaret.js');
 $cons->InstallInChrome('utils.js');
 $cons->Preprocess('performance_tweaks.p.js', 'performance_tweaks.js');
 $cons->InstallInChrome('performance_tweaks.js');
-$cons->InstallInChrome('color.js');
-$cons->InstallInChrome('dom.js');
-
-if ($buildFlavour eq "dev") {
-    $cons->InstallInChrome('benchmark.js');
-}

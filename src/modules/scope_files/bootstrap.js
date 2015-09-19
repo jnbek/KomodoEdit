@@ -5,12 +5,16 @@ var startupData;
 
 function loadIntoWindow(window) {
     try {
-        window.require.setRequirePath("scope-files/", "chrome://scope-files/content/");
-        var commando = window.require("commando/commando");
+        var require = window.require;
+        require.setRequirePath("scope-files/", "chrome://scope-files/content/");
+        var commando = require("commando/commando");
+        var system   = require("sdk/system");
         commando.registerScope("scope-files", {
             name: "Files",
-            icon: "chrome://icomoon/skin/icons/file5.png",
-            handler: "scope-files/files"
+            description: "Search through your project files",
+            icon: "koicon://ko-svg/chrome/icomoon/skin/file5.svg",
+            handler: "scope-files/files",
+            keybindTransit: "cmd_goToFile"
         });
     } catch (e) {
         Cu.reportError("Commando: Exception while registering scope 'Files'");

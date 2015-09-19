@@ -165,6 +165,9 @@ this.setCommandEnabled = function _command_setCommandEnabled(id, node, supported
 // mode or in "repeat next command" mode
 this.doCode = function command_doCode(cmdId, code) {
     try {
+        if (cmdId instanceof Node) {
+            cmdId = cmdId.getAttribute("id");
+        }
         // ko.macros.recorder can be undefined if we're not in the main komodo.xul window (e.g. Rx commands)
         if (typeof(ko.macros) != 'undefined' &&
             ko.macros.recorder &&
@@ -277,7 +280,7 @@ this.doCommand = function command_doCommand(command, options) {
     } catch (e) {
         if (!suppressExceptions) {
             _log.exception(e,"An error occurred executing the "+command+" command");
-            ko.statusBar.AddMessage(e, "commands", 5000, true, false);
+            require("notify/notify").send(e, "commands", {priority: "error"});
             throw Components.results.NS_ERROR_FAILURE;
         }
     }

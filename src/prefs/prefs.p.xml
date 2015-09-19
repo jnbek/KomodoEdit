@@ -5,7 +5,7 @@
   <!-- This version field is used by Komodo to upgrade preferences.
        The value should be kept in sync with "../components/koInitService.p.py"
   -->
-  <long id="version">11</long>
+  <long id="version">20</long>
 
   <!-- "uilayout_version" is used by Komodo to upgrade ui layouts.
        Must keep in sync with "../chrome/komodo/content/library/uilayout.p.js"
@@ -75,24 +75,6 @@
   <string id="rx-default-regex">(.*)(\d+)</string>
   <string id="rx-default-teststring">testing123</string>
 
-  <!-- 'show_start_page' indicates whether to show the Start Page at startup. -->
-  <boolean id="show_start_page">1</boolean>
-  <boolean id="start_page_quick_links_box_closed">0</boolean>
-  <boolean id="start_page_tip_box_closed">1</boolean>
-  <boolean id="start_page_landing_box_closed">0</boolean>
-  <string id="start_page_landing_box_url">http://komodo.activestate.com/startpage/komodoedit/index_edit.html</string>
-  <ordered-preference id="start_page_default_templates">
-    <string>resource://app/extensions/html_language@ActiveState.com/templates/Common/HTML.html</string>
-    <string>resource://app/extensions/html_language@ActiveState.com/templates/Common/HTML 5.html</string>
-    <string>/Common/JavaScript.js</string>
-    <string>/Common/Node.js</string>
-    <string>/Common/Perl.pl</string>
-    <string>resource://app/extensions/php_language@ActiveState.com/templates/Common/PHP.php</string>
-    <string>/Common/Python.py</string>
-    <string>/Common/Ruby.rb</string>
-    <string>/All Languages/Tcl.tcl</string>
-  </ordered-preference>
-
   <boolean id="uiRxSeparateWindow">0</boolean>
 
   <string id="ui.tabs.sidepanes.left.layout">icons</string>
@@ -113,14 +95,15 @@
   <boolean id="editHomeKeyFavorsFirstNonSpace">1</boolean>
   <long id="lintDelay">1000</long>
   <boolean id="lintEOLs">1</boolean>
+  <boolean id="lintShowResultsInline">1</boolean>
   <boolean id="lintClearOnTextChange">0</boolean>
   <boolean id="colorizing_enabled">1</boolean>
   <boolean id="editUseAlternateFaceType">0</boolean>
-  <!-- editFoldStyle: none, box, plusminus, curvytree, squaretree -->
-  <string id="editFoldStyle">squaretree</string>
+  <!-- editFoldStyle: none, box, plusminus, curvytree, squaretree, arrows -->
+  <string id="editFoldStyle">arrows</string>
   
   <!-- editShowMinimap: whether to show a minimap scrollbar -->
-  <boolean id="editShowMinimap">true</boolean>
+  <boolean id="editShowMinimap">false</boolean>
 
   <!-- editFoldLines: whether to show horizontal lines on fold marks -->
   <boolean id="editFoldLines">1</boolean>
@@ -446,14 +429,14 @@
  'Construct': 'Perl',
  'Gemfile': 'Ruby',
  'makefile': 'Makefile',
- 'rakefile': 'Ruby'
+ 'rakefile': 'Ruby',
+ 'Vagrantfile': 'Ruby'
 }</string>
 
   <string id="fileDefaultNew">Text</string>
   <long id="gui_port">11010</long> <!-- port to be used in socket communication -->
   <string id="defaultSelectedPref">editorItem</string>
-  <string id="encodingDefault">iso8859-1</string>
-  <boolean id="encodingEnvironment">1</boolean>
+  <string id="encodingDefault">utf-8</string>
   <boolean id="encodingAutoDetect">1</boolean>
   <boolean id="encodingXMLDec">1</boolean>
   <boolean id="encodingHTML">0</boolean>
@@ -492,7 +475,7 @@
   <string id="find-lastInFilesContext">files</string>
   <boolean id="find-skipLargeFilesEnabled">1</boolean>
   <long id="find-skipFileSizesLargerThan">104857600</long> <!-- 100 MB -->
-  <boolean id="find-pinFindReplaceDialog">0</boolean>
+  <boolean id="find-pinFindReplaceDialog">1</boolean>
 
   <!-- variable highlighting preferences (see kd 0277) -->
   <boolean id="codeintel_highlight_variables_auto_mouse">1</boolean>
@@ -531,15 +514,11 @@
   <boolean id="checkNetworkDiskFile">1</boolean>
 
   <!-- Language Preferences; these are treated specially in koDocumentBase -->
-  <string id="languages/Node.js/newEncoding">utf-8</string>
   <boolean id="languages/Makefile/useTabs">1</boolean>
   <string id="languages/Python/newEncoding">ascii</string>
-  <string id="languages/Python3/newEncoding">utf-8</string>
   <long id="languages/Ruby/indentWidth">2</long>
   <long id="languages/RHTML/indentWidth">2</long>
-  <string id="languages/VisualBasic/newEncoding">utf-8</string>
-  <string id="languages/XML/newEncoding">utf-8</string>
-  <string id="languages/XSLT/newEncoding">utf-8</string>
+  <long id="languages/YAML/indentWidth">2</long>
 
   <preference-set id="filepickers.defaultDirs"/>
 
@@ -775,7 +754,7 @@
        current project, if any. -->
   <boolean id="new_file_add_to_project">1</boolean>
 
-  <string id="editor-scheme">Default</string>
+  <string id="editor-scheme">Tomorrow_Dark</string>
 
   <!-- #if PLATFORM == "darwin" -->
   <!-- Use a different fontQuality setting on the Mac - see bug 99891. -->
@@ -957,9 +936,21 @@
 
   <!-- Default icon set, must be defined as it's used to unload it -->
   <!-- #if PLATFORM == "darwin" -->
-      <string id="koSkin_custom_icons">chrome://iconset-cupertino/content/manifest/chrome.manifest</string>
+      <string id="koSkin_custom_icons">chrome://iconset-yosemite/content/manifest/chrome.manifest</string>
   <!-- #else -->
       <string id="koSkin_custom_icons">chrome://iconset-dark/content/manifest/chrome.manifest</string>
+  <!-- #endif -->
+      <boolean id="koSkin_use_custom_scrollbars">1</boolean>
+      <boolean id="koSkin_scheme_skinning">1</boolean>
+  
+  <!-- Todo: This is ugly and redundant, the icon system needs an overhaul to simplify eeeverything -->
+  <!-- #if PLATFORM == "darwin" -->
+      <string id="iconset-base-color">#7B7B7B</string>
+      <string id="iconset-toolbar-color">#595959</string>
+      <string id="iconset-selected-color">#FFFFFF</string>
+  <!-- #else -->
+      <string id="iconset-base-color">#4B4B4B</string>
+      <string id="iconset-selected-color">#375A91</string>
   <!-- #endif -->
 
   <!-- Record the custom manifests that need to be loaded at runtime (startup) -->
@@ -975,7 +966,8 @@
   <string id="donotask_action_placesAllowDragDropItemsToFolders"></string>
 
   <!-- Analytics -->
-  <string id="analytics_ga_id">UA-45985051-1</string>
+  <string id="analytics_ga_id">UA-47685083-3</string>
+  <boolean id="analytics_enabled">0</boolean> <!-- Analytics is opt-in, not opt-out -->
 
   <ordered-preference id="analytics_track_prefs">
     <string>koSkin_custom_skin</string>
@@ -994,4 +986,69 @@
   <ordered-preference id="analytics_track_decks">
     <string>komodo-box</string>
   </ordered-preference>
+
+  <!-- File Icons -->
+    <!--
+        Format: <language>:<ext>:<color>
+        Ext should be no longer than 4 characters
+        Color can be in any format that css "background-color" accepts
+    -->
+  <ordered-preference id="fileicons_presets">
+    <string>Text:TXT:#A1A1A1</string>
+    <string>Unknown:?:#A1A1A1</string>
+    <string>PHP:PHP:#A075B2</string>
+    <string>Ruby:RB:#EB594C</string>
+    <string>JavaScript:JS:#37A63A</string>
+    <string>Node.js:NODE:#4B8850</string>
+    <string>HTML:HTML:#F2A935</string>
+    <string>HTML5:HTML:#F25D5A</string>
+    <string>Python:PY:#424B9C</string>
+    <string>Python3:PY:#296A9C</string>
+    <string>CSS:CSS:#5C8AB9</string>
+    <string>LESS:CSS:#362397</string>
+  </ordered-preference>
+
+  <ordered-preference id="fileicons_ext_mapping">
+    <string>snd:#6F24C2:adp,au,snd,mid,midi,kar,rmi,mp4a,mpga,mp2,mp2a,mp3,m2a,m3a,oga,ogg,spx,s3m,sil,uva,uvva,eol,dra,dts,dtshd,lvp,pya,ecelp4800,ecelp7470,ecelp9600,rip,weba,aac,aif,aiff,aifc,caf,flac,mka,m3u,wax,wma,ram,ra,rmp,wav,xm</string>
+    <string>img:#C22427:bmp,cgm,g3,gif,ief,jpeg,jpg,jpe,ktx,png,btif,sgi,svg,svgz,tiff,tif,psd,uvi,uvvi,uvg,uvvg,sub,djvu,djv,dwg,dxf,fbs,fpx,fst,mmr,rlc,mdi,wdp,npx,wbmp,xif,webp,3ds,ras,cmx,fh,fhc,fh4,fh5,fh7,ico,sid,pcx,pic,pct,pnm,pbm,pgm,ppm,rgb,tga,xbm,xpm,xwd</string>
+    <string>txt:#A1A1A1:appcache,ics,ifb,css,csv,html,htm,n3,txt,text,conf,def,list,log,in,dsc,rtx,sgml,sgm,tsv,t,tr,roff,man,me,ms,ttl,uri,uris,urls,vcard,curl,dcurl,scurl,mcurl,sub,fly,flx,gv,3dml,spot,jad,wml,wmls,s,asm,c,cc,cxx,cpp,h,hh,dic,f,for,f77,f90,java,opml,p,pas,nfo,etx,sfv,uu,vcs,vcf</string>
+    <string>vid:#2470C2:3gp,3g2,h261,h263,h264,jpgv,jpm,jpgm,mj2,mjp2,mp4,mp4v,mpg4,mpeg,mpg,mpe,m1v,m2v,ogv,qt,mov,uvh,uvvh,uvm,uvvm,uvp,uvvp,uvs,uvvs,uvv,uvvv,dvb,fvt,mxu,m4u,pyv,uvu,uvvu,viv,webm,f4v,fli,flv,m4v,mkv,mk3d,mks,mng,asf,asx,vob,wm,wmv,wmx,wvx,avi,movie,smv</string>
+    <string>font:bdf,gsf,psf,otf,pcf,snf,ttf,ttc,pfa,pfb,pfm,afm,woff</string>
+  </ordered-preference>
+
+  <string id="fileicons_color_whitelist">class:rss:rtf:csv:com:bat:sh:dtd:xpi:conscript:construct:manifest</string>
+
+  <boolean id="prefs_show_advanced">0</boolean>
+
+  <ordered-preference id="notify_disabled_categories">
+    <string>codeintel-verbose</string>
+    <string>codeintel-event</string>
+  </ordered-preference>
+  
+  <ordered-preference id="notify_disabled_categories_warning">
+    <string>codeintel-event</string>
+  </ordered-preference>
+  
+  <ordered-preference id="notify_disabled_categories_error">
+    <string>codeintel-event</string>
+  </ordered-preference>
+  
+  <long id="notify_max_queue_length">3</long>
+
+  <ordered-preference id="commando_favourites"/>
+  <boolean id="commando_preserve_query">1</boolean>
+  <string id="commando_shell_output">hud</string>
+  <boolean id="commando_navigate_by_number">1</boolean>
+  <long id="commando_number_select_delay">200</long>
+
+  <ordered-preference id="scope-files-shortcuts"/>
+  
+  <!-- #if PLATFORM == "linux" -->
+  <boolean id="notify_use_opacity">0</boolean>
+  <!-- #endif -->
+
+  <string id="bugsnag_key">a0ffb67a805253227e906fb6ec1a1cde</string>
+
+  <string id="package_api_endpoint">http://komodoide.com/json/resources/</string>
+  
 </preference-set>

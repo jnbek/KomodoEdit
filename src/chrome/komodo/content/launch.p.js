@@ -163,21 +163,12 @@ this.language = function(searchTerm) {
         command = command.replace("%W", searchTerm);
     }
 
-    ko.run.runCommand(window,
-                   command,
-                   null, // cwd
-                   null, // env
-                   false, // insertOutput
-                   false, // operateOnSelection
-                   true, // doNotOpenOutputWindow
-                   'no-console', // runIn
-                   0, // parseOutput
-                   '', // parseRegex
-                   0, // showParsedOutputList
-                   name,   // name
-                   true,   // clearOutputWindow
-                   null,   // terminationCallback
-                   false); // saveInMRU
+    ko.run.command(command,
+                   {
+                    "runIn": 'no-console',
+                    "openOutputWindow": false,
+                    "name": name,
+                   });
 }
 
 
@@ -186,18 +177,12 @@ this.language = function(searchTerm) {
  */
 this.alternate = function() {
     var command = ko.prefs.getStringPref('OtherHelpCommand');
-    ko.run.runCommand(window,
-                   command,
-                   null, // cwd
-                   null, // env
-                   false, // insertOutput
-                   false, // operateOnSelection
-                   true, // doNotOpenOutputWindow
-                   'no-console', // runIn
-                   0, // parseOutput
-                   '', // parseRegex
-                   0, // showParsedOutputList
-                   "Alternate Help"); // name
+    ko.run.command(command,
+                   {
+                    "runIn": 'no-console',
+                    "openOutputWindow": false,
+                    "name": "Alternate Help",
+                   });
 }
 
 
@@ -245,6 +230,28 @@ ko.launch = {};
 (function () {
 
 
+this.findBrowser = function(args = {})
+{
+    // Transfer focus to the hidden input buffer to capture keystrokes
+    // from the user while find2.xul is loading. The find dialog will
+    // retrieve these contents when it is ready.
+    ko.inputBuffer.start();
+    
+    ko.launch.find2_dialog_args = args;
+
+    var wrapper = document.getElementById("findReplaceWrap");
+    var _findBrowser = document.getElementById("findReplaceBrowser");
+    if ( ! _findBrowser.hasAttribute("src")) {
+        _findBrowser.setAttribute("src", "chrome://komodo/content/find/embedded.xul");
+    }
+    else
+        _findBrowser.contentWindow._init();
+        
+    wrapper.removeAttribute("collapsed");
+    
+    return _findBrowser;
+}
+
 /**
  * Open the Find dialog.
  *
@@ -252,26 +259,10 @@ ko.launch = {};
  */
 this.find = function(pattern /* =null */) {
     if (typeof(pattern) == 'undefined') pattern = null;
-    // Transfer focus to the hidden input buffer to capture keystrokes
-    // from the user while find2.xul is loading. The find dialog will
-    // retrieve these contents when it is ready.
-    ko.inputBuffer.start();
-
-    // WARNING: Do NOT use ko.windowManager.openOrFocusDialog() here.
-    // Because that ends up causing problems when re-opening the find
-    // dialog (i.e. Ctrl+F when the Find dialog is already up).
-    // openOrFocusDialog() results in the onfocus event but not onload
-    // to the find dialog. That *could* be worked around with an onfocus
-    // handler on find2.xul, but then you run into problems attempting
-    // to focus the pattern textbox. (Or at least I did when experimenting
-    // on Windows.)
-    return ko.windowManager.openDialog(
-        "chrome://komodo/content/find/find2.xul",
-        "komodo_find2",
-        "chrome,close=yes,centerscreen",
-        {"pattern": pattern,
-         "mode": "find"
-        });
+    ko.launch.findBrowser({
+        "pattern": pattern,
+        "mode": "find"
+    });
 }
 
 
@@ -282,21 +273,11 @@ this.find = function(pattern /* =null */) {
  * @param {String} repl The replacement pattern.
  */
 this.replace = function(pattern /* =null */, repl /* =null */) {
-    // Transfer focus to the hidden input buffer to capture keystrokes
-    // from the user while find2.xul is loading. The find dialog will
-    // retrieve these contents when it is ready.
-    ko.inputBuffer.start();
-
-    // WARNING: Do NOT use ko.windowManager.openOrFocusDialog() here.
-    // (See above for why.)
-    return ko.windowManager.openDialog(
-        "chrome://komodo/content/find/find2.xul",
-        "komodo_find2",
-        "chrome,close=yes,centerscreen",
-        { "pattern": pattern,
-          "repl": repl,
-          "mode": "replace"
-        });
+    ko.launch.findBrowser({
+        "pattern": pattern,
+        "repl": repl,
+        "mode": "replace"
+    });
 }
 
 /**
@@ -306,21 +287,11 @@ this.replace = function(pattern /* =null */, repl /* =null */) {
  * @param {string} pattern is the pattern to search for. Optional.
  */
 this.findInCollection = function(collection, pattern /* =null */) {
-    // Transfer focus to the hidden input buffer to capture keystrokes
-    // from the user while find2.xul is loading. The find dialog will
-    // retrieve these contents when it is ready.
-    ko.inputBuffer.start();
-
-    // WARNING: Do NOT use ko.windowManager.openOrFocusDialog() here.
-    // (See above for why.)
-    return ko.windowManager.openDialog(
-        "chrome://komodo/content/find/find2.xul",
-        "komodo_find2",
-        "chrome,close=yes,centerscreen",
-        { "collection": collection,
-          "pattern": pattern,
-          "mode": "findincollection"
-        });
+    ko.launch.findBrowser({
+        "collection": collection,
+        "pattern": pattern,
+        "mode": "findincollection"
+    });
 }
 
 /**
@@ -332,22 +303,12 @@ this.findInCollection = function(collection, pattern /* =null */) {
  */
 this.replaceInCollection = function(collection, pattern /* =null */,
                                     repl /* =null */) {
-    // Transfer focus to the hidden input buffer to capture keystrokes
-    // from the user while find2.xul is loading. The find dialog will
-    // retrieve these contents when it is ready.
-    ko.inputBuffer.start();
-
-    // WARNING: Do NOT use ko.windowManager.openOrFocusDialog() here.
-    // (See above for why.)
-    return ko.windowManager.openDialog(
-        "chrome://komodo/content/find/find2.xul",
-        "komodo_find2",
-        "chrome,close=yes,centerscreen",
-        { "collection": collection,
-          "pattern": pattern,
-          "repl": repl,
-          "mode": "replaceincollection"
-        });
+    ko.launch.findBrowser({
+        "collection": collection,
+        "pattern": pattern,
+        "repl": repl,
+        "mode": "replaceincollection"
+    });
 }
 
 /**
@@ -356,20 +317,10 @@ this.replaceInCollection = function(collection, pattern /* =null */,
  * @param {String} pattern
  */
 this.findInCurrProject = function(pattern /* =null */) {
-    // Transfer focus to the hidden input buffer to capture keystrokes
-    // from the user while find2.xul is loading. The find dialog will
-    // retrieve these contents when it is ready.
-    ko.inputBuffer.start();
-
-    // WARNING: Do NOT use ko.windowManager.openOrFocusDialog() here.
-    // (See above for why.)
-    return ko.windowManager.openDialog(
-        "chrome://komodo/content/find/find2.xul",
-        "komodo_find2",
-        "chrome,close=yes,centerscreen",
-        { "pattern": pattern,
-          "mode": "findincurrproject"
-        });
+    ko.launch.findBrowser({
+        "pattern": pattern,
+        "mode": "findincurrproject"
+    });
 }
 
 
@@ -380,21 +331,11 @@ this.findInCurrProject = function(pattern /* =null */) {
  * @param {String} repl The replacement pattern.
  */
 this.replaceInCurrProject = function(pattern /* =null */, repl /* =null */) {
-    // Transfer focus to the hidden input buffer to capture keystrokes
-    // from the user while find2.xul is loading. The find dialog will
-    // retrieve these contents when it is ready.
-    ko.inputBuffer.start();
-
-    // WARNING: Do NOT use ko.windowManager.openOrFocusDialog() here.
-    // (See above for why.)
-    return ko.windowManager.openDialog(
-        "chrome://komodo/content/find/find2.xul",
-        "komodo_find2",
-        "chrome,close=yes,centerscreen",
-        { "pattern": pattern,
-          "repl": repl,
-          "mode": "replaceincurrproject"
-        });
+    ko.launch.findBrowser({
+        "pattern": pattern,
+        "repl": repl,
+        "mode": "replaceincurrproject"
+    });
 }
 
 /**
@@ -407,11 +348,6 @@ this.replaceInCurrProject = function(pattern /* =null */, repl /* =null */) {
  */
 this.findInFiles = function(pattern /* =null */, dirs /* =null */,
                             includes /* =null */, excludes /* =null */) {
-    // Transfer focus to the hidden input buffer to capture keystrokes
-    // from the user while find2.xul is loading. The find dialog will
-    // retrieve these contents when it is ready.
-    ko.inputBuffer.start();
-
     // Use the current view's cwd for interpreting relative paths.
     var view = ko.views.manager.currentView;
     var cwd = null;
@@ -423,20 +359,15 @@ this.findInFiles = function(pattern /* =null */, dirs /* =null */,
     }
 
     var mode = dirs ? "findinfiles" : "findinlastfiles";
-
-    // WARNING: Do NOT use ko.windowManager.openOrFocusDialog() here.
-    // (See above for why.)
-    return ko.windowManager.openDialog(
-            "chrome://komodo/content/find/find2.xul",
-            "komodo_find2",
-            "chrome,close=yes,centerscreen",
-            { "pattern": pattern,
-               "dirs": dirs,
-               "includes": includes,
-               "excludes": excludes,
-               "cwd": cwd,
-               "mode": mode
-            });
+    
+    ko.launch.findBrowser({
+        "pattern": pattern,
+        "dirs": dirs,
+        "includes": includes,
+        "excludes": excludes,
+        "cwd": cwd,
+        "mode": mode
+    });
 }
 
 /**
@@ -451,26 +382,16 @@ this.findInFiles = function(pattern /* =null */, dirs /* =null */,
 this.replaceInFiles = function(pattern /* =null */, repl /* =null */,
                                dirs /* =null */, includes /* =null */,
                                excludes /* =null */) {
-    // Transfer focus to the hidden input buffer to capture keystrokes
-    // from the user while find2.xul is loading. The find dialog will
-    // retrieve these contents when it is ready.
-    ko.inputBuffer.start();
-
     var mode = dirs ? "replaceinfiles" : "replaceinlastfiles";
 
-    // WARNING: Do NOT use ko.windowManager.openOrFocusDialog() here.
-    // (See above for why.)
-    return ko.windowManager.openDialog(
-            "chrome://komodo/content/find/find2.xul",
-            "komodo_find2",
-            "chrome,close=yes,centerscreen",
-            { "pattern": pattern,
-              "repl": repl,
-              "dirs": dirs,
-              "includes": includes,
-              "excludes": excludes,
-              "mode": mode
-            });
+    ko.launch.findBrowser({
+        "pattern": pattern,
+        "repl": repl,
+        "dirs": dirs,
+        "includes": includes,
+        "excludes": excludes,
+        "mode": mode
+    });
 }
 
 

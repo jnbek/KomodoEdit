@@ -241,6 +241,12 @@ this.Manager.prototype.manageKeyboardShortcut = function(part, topic, partId) {
     }
 }
 
+this.Manager.prototype.reloadConfigurations = function () {
+    var schemes = new Array();
+    this.keybindingSchemeService.getSchemeNames(schemes, new Object());
+    this._knownconfigs = schemes.value;
+}
+
 this.Manager.prototype.getConfigurations = function () {
     return this._knownconfigs;
 }
@@ -325,6 +331,8 @@ function cloneObject(what) {
  *       existing keybindings to move to the state you're implementing for N+1
  *
  * Version history:
+ * 46: Komodo 9.3 - removed cmd_addAdditionalCaret
+ * 41,42: Komodo 9.0.0 - add commando commands: Ctrl+Shift+K, Ctrl+Shift+O, Ctrl+<
  * 40: Komodo 9.0.0 - add Vi commands: zz z. z-
  * 39: Komodo 8.5.0b3 - add Ctrl+D for cmd_addNextWordToCaretSet
  * 38: Komodo 8.5.0b2 - ?
@@ -368,7 +376,7 @@ function cloneObject(what) {
  * 2: Komodo 4.2.0-beta2 and above
  * 1: Komodo 4.2.0-beta1 and before
  */
-const currentKeybindingVersionNumber = 40;
+const currentKeybindingVersionNumber = 46;
 
 /**
  * Remove this dictionary of keybinds.
@@ -950,6 +958,34 @@ this.Manager.prototype._upgradeKeybingings = function (from_version,
                 });
             }
             break;
+        case 42:
+// #if PLATFORM != 'darwin'
+            this._remove_keybinding_sequences({
+                "cmd_goToFile":       [ "Ctrl+Shift+O" ],
+                "cmd_invokeTool":     [ "Ctrl+Shift+K" ]
+            });
+            this._add_keybinding_sequences({
+                "cmd_scope-combined-toolscmds": [ "Ctrl+Shift+K" ],
+                "cmd_scope-files":              [ "Ctrl+Shift+O" ],
+                "cmd_scope-openfiles":          [ "Ctrl+<" ]
+            });
+// #else
+            this._remove_keybinding_sequences({
+                "cmd_goToFile":       [ "Meta+Shift+O" ],
+                "cmd_invokeTool":     [ "Meta+Shift+K" ]
+            });
+            this._add_keybinding_sequences({
+                "cmd_scope-combined-toolscmds": [ "Meta+Shift+K" ],
+                "cmd_scope-files":              [ "Meta+Shift+O" ],
+                "cmd_scope-openfiles":          [ "Meta+<" ]
+            });
+// #endif
+            break;
+        case 46:
+            this._remove_keybinding_sequences({
+                'cmd_addAdditionalCaret': ["Ctrl+K, Ctrl+Y"],
+            });
+            break;
         }
         from_version += 1;
     }
@@ -1276,13 +1312,11 @@ this.Manager.prototype.saveAndApply = function(prefset) {
     try {
         var keybindings = '';
         var i, keybinding;
-        var dirty = false;
         this.prefset = prefset;
         if (prefset.getStringPref('keybinding-scheme') != this.currentConfiguration) {
             prefset.setStringPref('keybinding-scheme', this.currentConfiguration);
-            dirty = true;
         }
-        if (dirty || this._configDirty || !ko.windowManager.lastWindow()) {
+        if ( ! ko.windowManager.lastWindow()) {
             ko.dialogs.alert(_bundle.GetStringFromName("restartRequiredAfterKeybindingChange"),
                              null, null, // text, title
                              "reboot_after_changing_keybindings" // doNotAskPref
@@ -2398,11 +2432,8 @@ this.Manager.prototype.cancelPrefix = function (why) {
     this._keyPressCaptureWindow.removeEventListener('mousedown', gCancelKeyHandler, true);
     this._keyPressCaptureWindow.removeEventListener('blur', gCancelKeyHandler, false);
     this._keyPressCaptureWindow = null;
-    if (why == null) {
-        ko.statusBar.AddMessage(null, "prefix", 0, false)
-    } else {
-        ko.statusBar.AddMessage(why, "prefix", 3000, false)
-    }
+    
+    require("notify/notify").hideNotificationsByProp("id", "keyCompletion");
 }
 
 this.Manager.prototype.startPrefixCapture = function() {
@@ -2545,8 +2576,8 @@ this.Manager.prototype.keypressHandler = function (event, ignorePhase) {
         } else {
             this.startPrefixCapture();
             this.currentPrefixMap = this.currentPrefixMap[key]
-            ko.statusBar.AddMessage(this.currentPrefixString + " was pressed.  Awaiting further keys.",
-                                    "prefix", 0, false, false, false);
+            var msg = this.currentPrefixString + " was pressed.  Awaiting further keys.";
+            require("notify/notify").send(msg, "keybindings", {id: "keyCompletion", priority: "now"});
             event.cancelBubble = true;
             event.stopPropagation();
             event.preventDefault();

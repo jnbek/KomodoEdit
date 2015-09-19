@@ -23,6 +23,21 @@ Import(
 );
 
 
+sub getPrebuiltDirectory {
+    my $endpath = shift;
+    my $myBuildType = shift || $buildType;
+    if ($platform eq 'win') {
+        return cwd()."/prebuilt/win/$myBuildType/$endpath";
+    }
+    if ($platform eq 'darwin') {
+        return cwd()."/prebuilt/macosx/$myBuildType/$endpath";
+    }
+    if (-e cwd()."/prebuilt/$platform-$architecture/$myBuildType/$endpath") {
+        return cwd()."/prebuilt/$platform-$architecture/$myBuildType/$endpath";
+    }
+    return cwd()."/prebuilt/$platform/$myBuildType/$endpath";
+}
+
 # Hack default user-skins.rdf (see bug 23047).
 # - This is only really required on Linux and, besides, it breaks the
 #   Windows build with this:
@@ -33,4 +48,8 @@ if ($platform ne "win" && $platform ne "darwin") {
 }
 
 
-
+# Install Mac OS X color picker binary.
+if ($platform eq "darwin") {
+    $sourcedir = getPrebuiltDirectory("colorpicker/osx_colorpicker");
+    $cons->Install("$supportDir/colorpicker", $sourcedir);
+}

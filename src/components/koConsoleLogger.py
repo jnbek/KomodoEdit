@@ -58,10 +58,35 @@ class KoConsoleLogger:
         "/analytics_debug.js",
         "/socketio.js",
         "/jquery.js",
+        "chrome://komodo/content/contrib/less.js",
         # Returns an empty XML node - nothing to be concerned about.
         "addons.updates: Update manifest had an unrecognised namespace",
         # Preferences xpath queries result in this message - nothing we can do about that.
         'Use of getAttributeNodeNS() is deprecated.',
+        # SVG icons:
+        'Error: path does not exist:',
+        # XPCOMUtils and Services being a global constant:
+        'TypeError: "XPCOMUtils" is read-only',
+        'TypeError: "Services" is read-only',
+        'SyntaxError: test for equality (==) mistyped as assignment',
+        'Key event not available on some keyboard layouts: key="u" modifiers="control,alt"',
+        'ReferenceError: reference to undefined property this._nm',
+        'Bootstrapped manifest not allowed to use',
+        'ReferenceError: reference to undefined property this.treeBoxObject.columns',
+        'SyntaxError: applying the \'delete\' operator to an unqualified name is deprecated (5) in resource://gre/modules/DownloadUtils.jsm',
+        'No valid manifest directive',
+        'JavaScript strict warning: chrome://komodo/content/contrib/less.js',
+        'JavaScript strict warning: http://www.google-analytics.com/analytics_debug.js',
+        'JavaScript strict warning: chrome://global/content/bindings/tree.xml',
+        'JavaScript strict warning: resource://gre/modules/notifications.js',
+        'SyntaxError: test for equality (==) mistyped as assignment (=)?',
+        'SyntaxError: in strict mode code, functions may be declared only at top level or immediately within another function',
+        'JavaScript strict warning: , line 0: TypeError: "XPCOMUtils" is read-only',
+        'JavaScript strict warning: , line 0: TypeError: "Services" is read-only',
+        'Unexpected value  parsing y1 attribute',
+        'Unexpected value  parsing y2 attribute',
+        'Unexpected value  parsing x1 attribute',
+        'Unexpected value  parsing x2 attribute'
     ]
     def _handleScriptError(self, error):
         try:
@@ -100,6 +125,6 @@ class KoConsoleLogger:
 
         messagetext = message.message
         if any(x in messagetext for x in self.ignored_error_strings):
-            return
-
-        self.log.info("%s", messagetext)
+            self.log.debug("FILTERED: %s", messagetext)
+        else:
+            self.log.info("%s", messagetext)

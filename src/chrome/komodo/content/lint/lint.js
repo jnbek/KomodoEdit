@@ -103,6 +103,7 @@ var global_pref_observer_topics = {
     "lintDelay": null,
     "lintEOLs" : null,
     "endOfLine" : null,
+    "lintShowResultsInline" : null,
     "lintClearOnTextChange" : null,
     "nodejsDefaultInterpreter" : NODEJS_LIST,
     "perlDefaultInterpreter" : PERL_LIST,
@@ -338,6 +339,7 @@ this.lintBuffer.prototype.observe = function(subject, topic, data)
                 }
                 // FALLTHRU
                 case "lintEOLs":
+                case "lintShowResultsInline":
                 case "endOfLine":
                 _log.info("LintBuffer["+this.view.title+
                           "].observed EOL pref change, re-linting");
@@ -659,10 +661,10 @@ this.jumpToNextLintResult = function lint_jumpToNextLintResult()
         if (view.lintBuffer.errorString) {
             ko.dialogs.alert(view.lintBuffer.errorString);
         } else if (!lintResults) {
-            ko.statusBar.AddMessage("Running syntax check...", "lint", 1000, true);
+            require("notify/notify").send("Running syntax check...", "lint");
             ko.lint.doRequest();
         } else if (! lintResults.getNumResults()) {
-            ko.statusBar.AddMessage("There are no syntax errors.", "lint", 3000, true);
+            require("notify/notify").send("There are no syntax errors.", "lint");
         } else {
             // Determine the current position.
             var next = lintResults.getNextResult(view.currentLine,
@@ -728,9 +730,8 @@ this.initializeGenericPrefs = function(prefset) {
     if (typeof(prefset) == "undefined" || prefset instanceof Event) {
         prefset = ko.prefs;
     }
-    var ids = {};
-    prefset.getPrefIds(ids, {});
-    var idNames = ids.value.filter(function(x) x.indexOf("genericLinter:") == 0);
+    var ids = prefset.getPrefIds();
+    var idNames = ids.filter(function(x) x.indexOf("genericLinter:") == 0);
     idNames.forEach(function(prefName) {
         var langName = prefName.substr(prefName.indexOf(":") + 1);
         if (!(prefName in global_pref_observer_topics)) {

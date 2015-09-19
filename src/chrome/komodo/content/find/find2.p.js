@@ -75,6 +75,8 @@ var _bundle = Components.classes["@mozilla.org/intl/stringbundle;1"]
 
 //---- public methods for the dialog
 
+if ( ! opener) opener = require("ko/windows").getMain();
+
 function on_load() {
     try {
         _g_prefs = Components.classes["@activestate.com/koPrefService;1"]
@@ -87,6 +89,11 @@ function on_load() {
         window.focus();
 
         _init();
+        
+        document.addEventListener("keyup", function(e) {
+            if (e.keyCode == KeyEvent.DOM_VK_ESCAPE)
+                opener.document.getElementById("findReplaceWrap").setAttribute("collapsed", "true");
+        });
     } catch (ex) {
         log.exception(ex);
     }
@@ -184,6 +191,12 @@ function update(changed /* =null */) {
             _disable_widget(widgets.repl, !repl);
             _disable_widget(widgets.multiline_repl, !repl);
         }
+        
+        if (repl) {
+            document.documentElement.classList.add("mode-replace");
+        } else {
+            document.documentElement.classList.remove("mode-replace");
+        }
 
         // Don't muck with the focus for dialog init (changed=null)
         // because we want the pattern widget to get the focus, even
@@ -257,6 +270,8 @@ function update(changed /* =null */) {
     if (changed == null || changed == "regex") {
         opts.patternType = (widgets.opt_regex.checked ?
             koIFindOptions.FOT_REGEX_PYTHON : koIFindOptions.FOT_SIMPLE);
+        
+        //_collapse_widget(widgets.pattern_btn, !widgets.opt_regex.checked);
     }
     if (changed == "case") {
         // Skip this for initialization (changed=null).
@@ -434,6 +449,7 @@ function msg_callback(level, context, msg) {
     }
 }
 function _msg_erase() {
+    widgets.msg_deck.parentNode.classList.add("collapsed");
     // Clear text nodes from the current panel <description>.
     if (widgets.msg_deck.selectedIndex != 0) {
         var elem = widgets.msg_deck.selectedPanel;
@@ -450,6 +466,7 @@ function _msg_erase() {
 }
 function _msg_write(deck_idx, desc, msg) {
     _msg_erase();
+    widgets.msg_deck.parentNode.classList.remove("collapsed");
     desc.removeChild(desc.firstChild); // remove the "blank" text node
     desc.appendChild(document.createTextNode(msg));
     widgets.msg_deck.selectedIndex = deck_idx;
@@ -843,6 +860,7 @@ function _init_widgets()
 
     widgets.pattern_deck = document.getElementById('pattern-deck');
     widgets.pattern = document.getElementById('pattern');
+    widgets.pattern_btn = document.getElementById('pattern-shortcuts');
     widgets.multiline_pattern = document.getElementById('multiline-pattern');
     widgets.curr_pattern = widgets.pattern;
     widgets.repl_row = document.getElementById('repl-row');
@@ -876,6 +894,7 @@ function _init_widgets()
     widgets.excludes_row = document.getElementById('excludes-row');
     widgets.excludes = document.getElementById('excludes');
 
+    widgets.find_btn_wrap = document.getElementById('find-buttons');
     widgets.find_prev_btn = document.getElementById('find-prev-btn');
     widgets.find_next_btn = document.getElementById('find-next-btn');
     widgets.replace_btn = document.getElementById('replace-btn');
@@ -886,18 +905,15 @@ function _init_widgets()
     widgets.mark_all_btn = document.getElementById('mark-all-btn');
     //widgets.close_btn = document.getElementById('close-btn');
     //widgets.help_btn = document.getElementById('help-btn');
-    widgets.pin_btn = document.getElementById('pin-btn');
-    var pinned = _g_prefs.getBooleanPref("find-pinFindReplaceDialog");
-    widgets.pin_btn.checked = pinned;
-    pinDialog(pinned);
 }
 
 /**
  * Initialize the dialog from `opener.ko.launch.find2_dialog_args` data.
  */
 function _init() {
-    var [args] = window.arguments || [];
-    if (typeof(args) == "undefined") {
+    if (window.arguments) {
+        var [args] = window.arguments;
+    } else {
         args = opener.ko.launch.find2_dialog_args || {};
         opener.ko.launch.find2_dialog_args = null;
     }
@@ -1142,6 +1158,10 @@ function _init() {
     var findSessionSvc = Components.classes["@activestate.com/koFindSession;1"].
                             getService(Components.interfaces.koIFindSession);
     findSessionSvc.Reset();
+    
+    setTimeout(function() {
+        window.focus(); // focus hack
+    }, 50);
 }
 
 function _set_pattern_focus(select_all)
@@ -1192,7 +1212,7 @@ function _update_mode_ui() {
             break
         default:
             // Replace: Find Next, *Replace*, Replace All
-            _collapse_widget(widgets.find_prev_btn, true);
+            _collapse_widget(widgets.find_prev_btn, false);
             _collapse_widget(widgets.find_next_btn, false);
             _collapse_widget(widgets.replace_btn, false);
             _collapse_widget(widgets.find_all_btn, true);
@@ -1231,6 +1251,8 @@ function _update_mode_ui() {
             default_btn = widgets.find_next_btn;
         }
     }
+    
+    //_collapse_widget(widgets.pattern_btn, !widgets.opt_regex.checked);
     
     // Set the default button.
     if (_g_curr_default_btn == default_btn) {
@@ -1286,9 +1308,6 @@ function reset_find_context(reason /* =null */) {
         } else {
             var type = curr_view.getAttribute("type");
             switch (type) {
-            case "startpage":
-                msg_warn(_bundle.GetStringFromName("cannotSearchInTheStartPage"));
-                break;
             case "browser":
                 msg_warn(_bundle.GetStringFromName("cannotSearchInABrowserPreviewTab"));
                 break;
@@ -1408,6 +1427,8 @@ function _toggle_collapse(widget) {
     } else {
         widget.setAttribute("collapsed", "true");
     }
+    
+    updateWrapperHeight();
 }
 
 function _collapse_widget(widget, collapse) {
@@ -1417,6 +1438,8 @@ function _collapse_widget(widget, collapse) {
         if (widget.hasAttribute("collapsed"))
             widget.removeAttribute("collapsed");
     }
+    
+    updateWrapperHeight();
 }
 
 function _hide_widget(widget, hide) {
@@ -1426,44 +1449,25 @@ function _hide_widget(widget, hide) {
         if (widget.hasAttribute("hidden"))
             widget.removeAttribute("hidden");
     }
+    
+    updateWrapperHeight();
 }
 
 function _disable_widget(widget) {
     widget.setAttribute("disabled", "true");
+    updateWrapperHeight();
 }
 function _enable_widget(widget) {
     if (widget.hasAttribute("disabled")) {
         widget.removeAttribute("disabled");
     }
+    updateWrapperHeight();
 }
 
-/**
- * Toggle whether the window is raised
- */
-function toggle_pin() {
-    var pinned = widgets.pin_btn.checked;
-    _g_prefs.setBooleanPref("find-pinFindReplaceDialog", pinned);
-    pinDialog(pinned);
-}
-
-function pinDialog(pinned) {
-    function getXULWindowForDOMWindow(win)
-        win.QueryInterface(Ci.nsIInterfaceRequestor)
-           .getInterface(Ci.nsIWebNavigation)
-           .QueryInterface(Ci.nsIDocShellTreeItem)
-           .treeOwner
-           .QueryInterface(Ci.nsIInterfaceRequestor)
-           .getInterface(Ci.nsIXULWindow);
-    let rootWin = getXULWindowForDOMWindow(window);
-    let parentWin = ((opener && !opener.closed)
-                     ? getXULWindowForDOMWindow(opener)
-                     : null);
-    try {
-        Cc["@activestate.com/koIWindowManagerUtils;1"]
-          .getService(Ci.koIWindowManagerUtils)
-          .setOnTop(rootWin, parentWin, pinned);
-    } catch(ex) {
-        log.exception(ex, "pinDialog: Can't setOnTop");
-    }
+function updateWrapperHeight()
+{
+    var elem = opener.document.getElementById("findReplaceWrap");
+    var bo = document.getElementById('find-box-wrap').boxObject;
+    elem.setAttribute("height", bo.height);
 }
  

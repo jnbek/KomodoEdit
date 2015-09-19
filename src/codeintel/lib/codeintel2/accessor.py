@@ -41,7 +41,6 @@ lexer-based styled buffers.
 """
 
 import bisect
-import logging
 import math
 import re
 import threading
@@ -50,14 +49,13 @@ from SilverCity import ScintillaConstants
 
 from codeintel2.common import *
 from codeintel2 import util
-from hashlib import md5
 
 if _xpcom_:
     from xpcom import components
     from xpcom.client import WeakReference
     from xpcom import COMException
 
-log = logging.getLogger("codeintel.accessor")
+
 
 class Accessor(object):
     """Virtual base class for a lexed text accessor. This defines an API
@@ -154,10 +152,11 @@ class SilverCityAccessor(Accessor):
         """A backdoor specific to this accessor to allow the equivalent of
         updating the buffer/file/content.
         """
+        if isinstance(content, unicode):
+            content = content.encode("utf-8")
         self.content = content
         self.__tokens_cache = None
         self.__position_data_cache = None
-        self.__checksum_cache = None
 
     __tokens_cache = None
     @property
@@ -293,75 +292,6 @@ class SilverCityAccessor(Accessor):
         token = self._token_at_pos(pos)
         return (token["start_index"], token["end_index"] + 1)
 
-class OOPAccessor(SilverCityAccessor):
-    buf = None ##< Reference to the buffer, used for fetching text
-
-    def __init__(self, lexer, driver):
-        super(OOPAccessor, self).__init__(lexer, "")
-        self._content = None
-        self._driver = driver
-
-    def reset_content(self, content):
-        if content is None:
-            super(OOPAccessor, self).reset_content("")
-            self._content = None
-        else:
-            if isinstance(content, unicode):
-                # OOP accessor always uses utf-8
-                # (Note that this isn't true of all SilverCity accessors;
-                # things loaded from disk use unicode/utf16)
-                content = content.encode("utf-8")
-            super(OOPAccessor, self).reset_content(content)
-        self.has_content = True
-        self.checksum = None
-
-    _checksum_cache = None
-    @property
-    def checksum(self):
-        if self._checksum_cache is None:
-            content = self._content
-            if content is None:
-                return "0" * 32
-            else:
-                if isinstance(content, unicode):
-                    content = content.encode("utf-8")
-                self._checksum_cache = md5(content).hexdigest()
-        return self._checksum_cache
-    @checksum.setter
-    def checksum(self, value):
-        if value == self._checksum_cache:
-            return # no change
-        # Setting the checksum to a non-matching value should just wipe the
-        # content (so that we will re-fetch the text)
-        self._checksum_cache = None
-        self.reset_content(None)
-
-    _content = None
-    @property
-    def content(self):
-        if self._content is None:
-            # Fetch content from the other side...
-            log.debug("Getting text for %s...", self.buf.path)
-            response = self._driver\
-                           .sync_get_buffer_contents(path=self.buf.path,
-                                                     checksum=self.checksum)
-            text = response.get("text")
-            if text is not None:
-                if isinstance(text, unicode):
-                    text = text.encode("utf-8")
-                self.content = text
-            try:
-                env = response["env"]
-            except KeyError:
-                pass
-            else:
-                self.buf._env.update(env)
-        return self._content
-    @content.setter
-    def content(self, value):
-        assert isinstance(value, str)
-        self._content = value
-        self._checksum_cache = None
 
 class SciMozAccessor(Accessor):
     def __init__(self, scimoz, silvercity_lexer):
@@ -563,6 +493,10 @@ class AccessorCache:
         # _cacheLastBufPos is exclusive
         self._cacheLastBufPos  = position
 
+    def _initializeCacheBackwards(self):
+        self._cachePos -= 1
+        self._extendCacheBackwards()
+
     def _extendCacheBackwards(self, byAmount=None):
         if self._cacheFirstBufPos > 0:
             if byAmount is None:
@@ -586,6 +520,10 @@ class AccessorCache:
                 print "Ch cache now: %r" % (self._chCache)
         else:
             raise IndexError("No buffer left to examine")
+
+    def _initializeCacheForwards(self):
+        self._cachePos -= 1
+        self._extendCacheForwards()
 
     def _extendCacheForwards(self, byAmount=None):
         buf_length = self._accessor.length()
@@ -738,6 +676,8 @@ class AccessorCache:
         at and there is still no previous style found.
         """
         if current_style is None:
+            if not self._styleCache:
+                self._initializeCacheBackwards()
             current_style = self._styleCache[self._cachePos]
         try:
             new_ignore_styles = [current_style]
@@ -799,6 +739,8 @@ class AccessorCache:
         at and there is still no previous style found.
         """
         if current_style is None:
+            if not self._styleCache:
+                self._initializeCacheForwards()
             current_style = self._styleCache[self._cachePos]
         try:
             new_ignore_styles = [current_style]
@@ -844,72 +786,3 @@ class AccessorCache:
         if self._debug:
             print "text_range:: using parent text_range: %r - %r" % (start, end)
         return self._accessor.text_range(start, end)
-
-
-# Test function
-def _test():
-    class _TestAccessor(Accessor):
-        def __init__(self, content, styles):
-            self.content = content
-            self.style = styles
-        def length(self):
-            return len(self.content)
-        def char_at_pos(self, pos):
-            return self.content[pos]
-        def style_at_pos(self, pos):
-            return self.style[pos]
-        def gen_char_and_style_back(self, start, stop):
-            assert -1 <= stop <= start, "stop: %r, start: %r" % (stop, start)
-            for pos in range(start, stop, -1):
-                yield (self.char_at_pos(pos), self.style_at_pos(pos))
-        def gen_char_and_style(self, start, stop):
-            assert 0 <= start <= stop, "start: %r, stop: %r" % (start, stop)
-            for pos in range(start, stop):
-                yield (self.char_at_pos(pos), self.style_at_pos(pos))
-        def text_range(self, start, end):
-            return self.content[start:end]
-
-    content = "This is my test buffer\r\nSecond   line\r\nThird line\r\n"
-    styles =  "1111011011011110111111 2 21111110001111 2 21111101111 2 2".replace(" ", "")
-    ta = _TestAccessor(content, map(int, styles))
-    pos = len(content) - 2
-    ac = AccessorCache(ta, pos)
-    #ac._debug = True
-    for i in range(2):
-        assert(ac.getPrevPosCharStyle() == (pos-1, "e", 1))
-        assert(ac.getPrecedingPosCharStyle(1) == (pos-5, " ", 0))
-        assert(ac.getPrecedingPosCharStyle(0) == (pos-6, "d", 1))
-        assert(ac.getPrecedingPosCharStyle(1) == (pos-11, "\n", 2))
-        assert(ac.getPrecedingPosCharStyle()  == (pos-13, "e", 1))
-        assert(ac.getTextBackWithStyle(1) == (pos-16, "line"))
-        assert(ac.getPrevPosCharStyle() == (pos-17, " ", 0))
-        assert(ac.getPrecedingPosCharStyle(0) == (pos-20, "d", 1))
-        if i == 0:
-            ac.resetToPosition(pos)
-
-    assert(ac.getCurrentPosCharStyle() == (pos-20, "d", 1))
-
-    #print pos
-    #print ac.getSucceedingPosCharStyle()
-    assert(ac.getNextPosCharStyle() == (pos-19, " ", 0))
-    assert(ac.getSucceedingPosCharStyle() == (pos-16, "l", 1))
-    assert(ac.getTextForwardWithStyle(1) == (pos-13, "line"))
-    assert(ac.getNextPosCharStyle() == (pos-12, "\r", 2))
-    assert(ac.getNextPosCharStyle() == (pos-11, "\n", 2))
-    assert(ac.getSucceedingPosCharStyle(2) == (pos-10, "T", 1))
-    assert(ac.getSucceedingPosCharStyle() == (pos-5, " ", 0))
-    assert(ac.getSucceedingPosCharStyle() == (pos-4, "l", 1))
-    assert(ac.getSucceedingPosCharStyle() == (pos, "\r", 2))
-    assert(ac.getNextPosCharStyle() == (pos+1, "\n", 2))
-
-    # Bug: http://bugs.activestate.com/show_bug.cgi?id=64227
-    #      Ensure text_range uses correct parameters in boundary situations
-    ac.resetToPosition(3)
-    assert(ac.getTextBackWithStyle(1)[1] == "This")
-    ac.resetToPosition(len(content) - 2)
-    assert(ac.getTextForwardWithStyle(2)[1] == "\r\n")
-
-
-# When run from command line
-if __name__ == '__main__':
-    _test()

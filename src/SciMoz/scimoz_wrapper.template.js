@@ -40,11 +40,11 @@ koSciMozWrapper.prototype = {
 
     getHelperForLanguage: function() null,
     implementationLanguage: Ci.nsIProgrammingLanguage.JAVASCRIPT,
-    flags: Ci.nsIClassInfo.MAIN_THREAD_ONLY |
-           Ci.nsIClassInfo.EAGER_CLASSINFO,
+    flags: Ci.nsIClassInfo.MAIN_THREAD_ONLY,
 
     __scimoz: null,
 
+    __lastTextId: -1,
     __cachedText: null,
 };
 
@@ -66,8 +66,10 @@ koSciMozWrapper.prototype.setWordChars =
 // Override text to use locally cached text (for performance). Only reload the
 // text when it's out-dated.
 koSciMozWrapper.prototype.__defineGetter__("text", function get_text() {
-    if (this.__scimoz.textHasChanged) {
+    let textId = this.__scimoz.textId;
+    if (textId != this.__lastTextId) {
         this.__cachedText = this.__scimoz.text;
+        this.__lastTextId = textId;
     }
     return this.__cachedText;
 });
@@ -77,12 +79,12 @@ koSciMozWrapper.prototype.__defineGetter__("text", function get_text() {
 const kDefaultDPI = Services.appinfo.OS == "Darwin" ? 72 : 96;
 
 koSciMozWrapper.prototype.positionFromPoint = function(x, y) {
-    return this.__scimoz.positionFromPoint(x * this.logPixelsX / kDefaultDPI,
-                                           y * this.logPixelsY / kDefaultDPI);
+    return this.__scimoz.positionFromPoint(parseInt(x * this.logPixelsX / kDefaultDPI),
+                                           parseInt(y * this.logPixelsY / kDefaultDPI));
 };
 koSciMozWrapper.prototype.positionFromPointClose = function(x, y) {
-    return this.__scimoz.positionFromPointClose(x * this.logPixelsX / kDefaultDPI,
-                                                y * this.logPixelsY / kDefaultDPI);
+    return this.__scimoz.positionFromPointClose(parseInt(x * this.logPixelsX / kDefaultDPI),
+                                                parseInt(y * this.logPixelsY / kDefaultDPI));
 };
 koSciMozWrapper.prototype.pointXFromPosition = function(pos) {
     return this.__scimoz.pointXFromPosition(pos) * kDefaultDPI / this.logPixelsX;
@@ -91,12 +93,12 @@ koSciMozWrapper.prototype.pointYFromPosition = function(pos) {
     return this.__scimoz.pointYFromPosition(pos) * kDefaultDPI / this.logPixelsY;
 };
 koSciMozWrapper.prototype.charPositionFromPoint = function(x, y) {
-    return this.__scimoz.charPositionFromPoint(x * this.logPixelsX / kDefaultDPI,
-                                               y * this.logPixelsY / kDefaultDPI);
+    return this.__scimoz.charPositionFromPoint(parseInt(x * this.logPixelsX / kDefaultDPI),
+                                               parseInt(y * this.logPixelsY / kDefaultDPI));
 };
 koSciMozWrapper.prototype.charPositionFromPointClose = function(x, y) {
-    return this.__scimoz.charPositionFromPointClose(x * this.logPixelsX / kDefaultDPI,
-                                                    y * this.logPixelsY / kDefaultDPI);
+    return this.__scimoz.charPositionFromPointClose(parseInt(x * this.logPixelsX / kDefaultDPI),
+                                                    parseInt(y * this.logPixelsY / kDefaultDPI));
 };
 koSciMozWrapper.prototype.textHeight = function(line) {
     return this.__scimoz.textHeight(line) * kDefaultDPI / this.logPixelsY;

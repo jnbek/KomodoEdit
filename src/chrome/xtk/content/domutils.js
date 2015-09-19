@@ -124,6 +124,7 @@ getChildrenByAttribute: function(parent, attrKey, attrVal, returnFirst = false)
     if ( ! (attrVal instanceof Array)) attrVal = [attrVal]; // Allow multiple vals
 
     for (let [k,child] in Iterator(parent.childNodes)) {
+        if ( ! child.getAttribute) continue;
         if (child.getAttribute(attrKey) && attrVal.indexOf(child.getAttribute(attrKey)) !== -1) {
             if (returnFirst) return child;
             results.push(child);
@@ -187,7 +188,7 @@ fireEvent : function(target, eventName) {
 },
 
 /**
- * @deprecated since Komodo 9.0
+ * @deprecated since Komodo 9.0: https://github.com/Komodo/KomodoEdit/wiki/Komodo-9-Changes-Data-DOM-Events
  *
  * Send out a window data event with the given event name and data settings.
  *
@@ -207,7 +208,7 @@ fireDataEvent : function(target, eventName, data) {
     var event = document.createEvent("DataContainerEvent");
     event.initEvent(eventName, true, true);
     if (data) {
-        for (var key in data) {
+        for (var key of Object.keys(data)) {
             event.setData(key, data[key]);
         }
     }
@@ -225,8 +226,10 @@ fireDataEvent : function(target, eventName, data) {
  */
 newElement : function(name, attributes) {
     var elem = document.createElement(name);
-    for (var attr in attributes) {
-        elem.setAttribute(attr, attributes[attr]);
+    if (attributes) {
+        for (var attr of Object.keys(attributes)) {
+            elem.setAttribute(attr, attributes[attr]);
+        }
     }
     return elem;
 },

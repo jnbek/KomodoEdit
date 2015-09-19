@@ -64,10 +64,11 @@ django_keywords = [
 django_tags = [
     "autoescape",
     "block",
+    "blocktrans",
     "comment",
-    "csrf_token",
     "cycle",
     "debug",
+    "elif",
     "else",
     "empty",   # used with for loop
     "extends",
@@ -80,18 +81,22 @@ django_tags = [
     "ifnotequal",
     "include",
     "load",
+    "lorem",
     "now",
     "regroup",
+    "reversed",
     "spaceless",
     "ssi",
     "templatetag",
     "url",
+    "verbatim",
     "widthratio",
     "with",
-    
+
     # end tags
     "endautoescape",
     "endblock",
+    "endblocktrans",
     "endcomment",
     "endfilter",
     "endfor",
@@ -100,8 +105,9 @@ django_tags = [
     "endifequal",
     "endifnotequal",
     "endspaceless",
+    "endverbatim",
     "endwith",
-    
+
     # Escape keywords
     "openblock",
     "closeblock",
@@ -128,8 +134,8 @@ django_default_filter_names = [
     "escapejs",
     "filesizeformat",
     "first",
-    "fix_ampersands",
     "floatformat",
+    "force_escape",
     "get_digit",
     "iriencode",
     "join",
@@ -158,6 +164,8 @@ django_default_filter_names = [
     "timesince",
     "timeuntil",
     "title",
+    "truncatechars",
+    "truncatechars_html",
     "truncatewords",
     "truncatewords_html",
     "unordered_list",

@@ -240,6 +240,13 @@ wizard#accountSetup
     text-transform: @panel-label-transform;
     text-shadow: @panel-label-shadow;
     font-family: @panel-label-font;
+    
+    menupopup
+    {
+        text-transform: none;
+        text-shadow: none;
+        font-weight: normal;
+    }
 }
 
 #notificationWidget
@@ -274,47 +281,6 @@ wizard#accountSetup
     }
 }
 
-/* Start Page Styling
- *
- * Ideally this would be in it's own dedicated .less file, but due
- * to the way the startpage is currently structured it is not compatible
- * with the less loader.
- *
- * The main styling for the startpage is still in startpage.css, styling here
- * is only for platform specific tweaks (eg. colors) */
-
-view[type='startpage']
-{
-    background: @startpage-background;
-
-    .startpage-header
-    {
-        font-family: @startpage-heading-font;
-        background: @startpage-heading-background;
-        color: @startpage-heading-color;
-        text-shadow: @startpage-heading-text-shadow;
-        border: 0;
-        border-top: 1px solid @startpage-border-color;
-        border-bottom: 1px solid @startpage-border-color;
-    }
-
-    box[type="startpage"]:first-child .startpage-header
-    {
-        border-top: 0;
-    }
-
-    vbox[anonid="quicklinks-right"]
-    {
-        background: @startpage-quicklinks-background;
-        border-left: 1px solid @startpage-border-color;
-    }
-
-    .button-text
-    {
-        color: @startpage-color;
-    }
-}
-
 /* Breadcrumbs */
 
 #breadcrumbBar
@@ -322,15 +288,9 @@ view[type='startpage']
 
     .breadcrumb
     {
-        margin-right: 4px;
-        
-        &.folder .breadcrumb-arrow
+        .breadcrumb-arrow
         {
             background-image: @icon-breadcrumb-arrow;
-            margin-right: -16px;
-            width: 16px;
-            height: 16px;
-            opacity: 0.6;
         }
 
     }
@@ -359,44 +319,39 @@ toolbar#nav-bar
     border: 0;
 }
 
-/* CodeIntel */
+/* Quick Launch */
 
-scintilla > panel[anonid="autocompletepopup"] > hbox
+#quicklaunch
 {
-    -moz-appearance: none;
-}
-
-scintilla > panel[anonid="autocompletepopup"]
-{
-
-    & > hbox
+    border: 0 !important;
+    border-radius: 0 !important;
+    
+    .inner > button
     {
-        background: @window-background;
-    }
+        width: 250px;
+        padding: 6px 4px;
+        margin: 2px 0 1px;
 
-    grid
-    {
-        background: @list-tree-background;
-    }
-
-    .ko-autocomplete-item
-    {
-        background: @list-tree-row-background;
-        color: @list-tree-item-color;
-
-        &[selected]
+        label
         {
-            background: @list-tree-row-background-selected;
-            color: @list-tree-item-color-selected;
+            text-align: left;
         }
     }
-
-    & > hbox > grid:focus .ko-autocomplete-item
+    
+    image.button-icon
     {
-        &[selected]
+        display: block;
+        margin-right: 6px;
+    }
+    
+    .footer
+    {
+        padding: 4px 6px;
+        
+        image
         {
-            background: @list-tree-row-background-focus;
-            color: @list-tree-item-color-focus;
+            max-width: 12px;
+            max-height: 12px;
         }
     }
 

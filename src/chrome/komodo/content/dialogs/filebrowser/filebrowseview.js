@@ -103,6 +103,7 @@ function filebrowseview() {
   /* mNotifySelectionChanges - internal variable to allow the tree to       */
   /*                           temporarily disable selection notifications. */
   this.mNotifySelectionChanges = true;
+  this.mSelection = null;
   this.mSelectionCallback = null;
   this.mTree = null;
   this.mReverseSort = false;
@@ -152,8 +153,8 @@ filebrowseview.prototype = {
   /* void QueryInterface(in nsIIDRef uuid,
      [iid_is(uuid),retval] out nsQIResult result); */
   QueryInterface: function(iid) {
-    if (!iid.equals(nsITreeView) &&
-        !iid.equals(nsISupports)) {
+    if (!iid.equals(Components.interfaces.nsITreeView) &&
+        !iid.equals(Components.interfaces.nsISupports)) {
           throw Components.results.NS_ERROR_NO_INTERFACE;
         }
     return this;

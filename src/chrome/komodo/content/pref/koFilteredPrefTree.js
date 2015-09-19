@@ -39,12 +39,12 @@ var koFilteredTreeView = {};
 
 const OPEN_NODE_PREFS_NAME = "filtered-prefs-open-nodes-by-id";
 var log = ko.logging.getLogger('filtered-prefs');
+var prefs = Components.classes["@activestate.com/koPrefService;1"].
+    getService(Components.interfaces.koIPrefService).prefs;
 
 var _openPrefTreeNodes;
 
 function setupOpenPrefTreeNodes() {
-    var prefs = Components.classes["@activestate.com/koPrefService;1"].
-        getService(Components.interfaces.koIPrefService).prefs;
     if (!prefs.hasPref(OPEN_NODE_PREFS_NAME)) {
         _openPrefTreeNodes = {};
     } else {
@@ -60,9 +60,9 @@ function saveOpenPrefTreeNodes() {
 
 var treeItemsByURI = {}; // URI => array of TreeInfoItem;
 
-function TreeInfoItem(id, isContainer, isOpen, cls, url, label, helptag) {
+function TreeInfoItem(id, isContainer, isOpen, cls, url, label, helptag, advanced, properties) {
     this.id = id;
-    this.isContainer = isContainer;
+    this._isContainer = isContainer;
     this.cls = cls;
     this.url = url;
     this.label = label;
@@ -70,15 +70,33 @@ function TreeInfoItem(id, isContainer, isOpen, cls, url, label, helptag) {
     this.level = 0; // for nsITreeView
     this.state = isOpen ? xtk.hierarchicalTreeView.STATE_OPENED : xtk.hierarchicalTreeView.STATE_CLOSED;
     this.filteredOut = false;
+    this.advanced = advanced;
+    this.properties = properties || id;
 }
 
 TreeInfoItem.prototype.getChildren = function() {
-    return treeItemsByURI[this.url];
+    if (!(this.url in treeItemsByURI)) {
+        return [];
+    }
+    if (prefs.getBoolean("prefs_show_advanced", false)) {
+        return treeItemsByURI[this.url];
+    }
+    return treeItemsByURI[this.url].filter(function(row) {
+        return !row.advanced;
+    });
 };
 
 TreeInfoItem.prototype.hasChildren = function() {
-    return this.isContainer && (this.url in treeItemsByURI);
+    return this._isContainer && this.getChildren().length > 0;
 };
+
+Object.defineProperty(TreeInfoItem.prototype, "isContainer", {
+    get: function() { return this._isContainer && this.hasChildren(); },
+});
+
+Object.defineProperty(TreeInfoItem.prototype, "isContainerOpen", {
+    get: function() { return this.state === xtk.hierarchicalTreeView.STATE_OPENED; },
+});
 
 TreeInfoItem.prototype.toString = function() {
     var s = [];
@@ -88,21 +106,20 @@ TreeInfoItem.prototype.toString = function() {
             s.push(p + ": " + o);
         }
     }
+    s.push("isContainer: " + this.isContainer);
+    s.push("hasChildren: " + this.hasChildren());
     return "{ " + s.join(", ") + " }";
 }
 
-this.buildTree = function(root, key) {
+this.buildTree = function(root, key, isRoot = false) {
     var i, lim, currentList, rootChildren = root.childNodes, isContainer, isOpen, url, item;
-    var treeitem, treerow, treecell, treechildren;
+    var treeitem, treerow, treecell, treechildren, properties;
     if (typeof(key) === "undefined") key = ""; // top-level
     if (!(key in treeItemsByURI)) {
         treeItemsByURI[key] = [];
     }
     currentList = treeItemsByURI[key];
     lim = rootChildren.length;
-    if (key) {
-        currentList.hasChildren = lim > 0;
-    }
     for (var i = 0; i < lim; i++) {
         treeitem = rootChildren[i];
         treerow = treeitem.firstChild;
@@ -115,6 +132,8 @@ this.buildTree = function(root, key) {
                 isOpen = treeitem.getAttribute("open") === "true";
             }
         }
+        properties = treeitem.getAttribute("properties") || "";
+        if ( ! isRoot) properties += " child-row"
         url = treecell.getAttribute("url");
         item = new TreeInfoItem(treeitem.id,
                                 isContainer,
@@ -122,7 +141,9 @@ this.buildTree = function(root, key) {
                                 treecell.getAttribute("class"),
                                 url,
                                 treecell.getAttribute("label"),
-                                treecell.getAttribute("helptag"));
+                                treecell.getAttribute("helptag"),
+                                treeitem.getAttribute("advanced") == "true",
+                                properties);
         currentList.push(item);
         if (isContainer) {
             if (treeitem.childNodes.length != 2) {
@@ -143,7 +164,7 @@ this.getPrefTreeView = function() {
     setupOpenPrefTreeNodes();
     var rows = treeItemsByURI[""];
     if (!rows || rows.length == 0) {
-        this.buildTree(document.getElementById("panelChildren"), "");
+        this.buildTree(document.getElementById("panelChildren"), "", true);
         rows = treeItemsByURI[""];
         if (!rows || rows.length == 0) {
             throw new Error("No rows for PrefTreeView");
@@ -157,21 +178,28 @@ function PrefTreeView(initial_rows) {
     xtk.hierarchicalTreeView.apply(this, [initial_rows]);
     this._atomService = Components.classes["@mozilla.org/atom-service;1"].
                             getService(Components.interfaces.nsIAtomService);
+    this.enableSorting = false;
     this.filtering = false;
     // Three kinds of rows in this tree:
     // this._rows -- the current view of rows, which the parent class expects to work with
     //               it can be a filtered view
     // this._unfilteredRows -- the rows to show when there's no filter in place
     // this._totalRows -- the full tree of rows, which filtered rows are built from.
-    this._unfilteredRows = this._rows;
     this._buildAllRows();
-    this._processOpenContainerRows();    
+    this._processOpenContainerRows();
+    this._unfilteredRows = this._rows;
 };
 PrefTreeView.prototype = new xtk.hierarchicalTreeView();
 PrefTreeView.prototype.constructor = PrefTreeView;
 // and other nsITreeView methods
 PrefTreeView.prototype.getCellText = function(row, column) {
     return this._rows[row].label;
+};
+PrefTreeView.prototype.getRowProperties = function(row, column) {
+    return this._rows[row].properties;
+};
+PrefTreeView.prototype.getCellProperties = function(row, column) {
+    return this._rows[row].properties;
 };
 PrefTreeView.prototype.getCellValue = function(row, column) {
     if (typeof(row) == "undefined"
@@ -188,7 +216,7 @@ PrefTreeView.prototype.isContainer = function(row) {
     return this._rows[row].isContainer;
 };
 PrefTreeView.prototype.isContainerOpen = function(row) {
-    return this._rows[row].state == xtk.hierarchicalTreeView.STATE_OPENED;
+    return this._rows[row].isContainerOpen;
 };
 
 PrefTreeView.prototype._buildAllRows = function() {
@@ -231,10 +259,9 @@ PrefTreeView.prototype.toggleOpenState = function(row, updateTree) {
         return;
     }
     if (typeof(updateTree) == "undefined") updateTree = true;
-    var old_row_length = this._rows.length;
     var new_rows;
 
-    if (item.state === xtk.hierarchicalTreeView.STATE_CLOSED) {
+    if (!item.isContainerOpen) {
         var children = [];
         this._expand_child_rows(item, children);
         new_rows = this._rows.slice(0, row+1);
@@ -259,14 +286,13 @@ PrefTreeView.prototype.toggleOpenState = function(row, updateTree) {
     this._rows = new_rows;
     // Using rowCountChanged to notify rows were added
     if (updateTree) {
-        _openPrefTreeNodes[item.id] = (item.state
-                                   === xtk.hierarchicalTreeView.STATE_OPENED);
+        _openPrefTreeNodes[item.id] = item.isContainerOpen;
         this.tree.rowCountChanged(row+1, num_rows_changed);
         this.tree.invalidateRow(row); // To redraw the twisty.
     }
 };
 
-PrefTreeView.prototype.doClose = function() {
+PrefTreeView.prototype.doApply = function() {
     saveOpenPrefTreeNodes();
 };
 
@@ -274,8 +300,7 @@ PrefTreeView.prototype._processOpenContainerRows = function() {
     var i, row, lim = this._rows.length;
     for (var i = lim - 1; i >= 0; i--) {
         row = this._rows[i];
-        if (row.isContainer
-            && row.state === xtk.hierarchicalTreeView.STATE_OPENED) {
+        if (row.isContainer && row.isContainerOpen) {
             // get toggleOpenState to do all the work
             row.state = xtk.hierarchicalTreeView.STATE_CLOSED;
             this.toggleOpenState(i, /*updateTree=*/ false);
@@ -289,7 +314,7 @@ PrefTreeView.prototype._expand_child_rows = function(rowItem, newChildren) {
     rowItem.getChildren().forEach(function(child) {
         child.level = child_level;
         newChildren.push(child);
-        if (child.state === xtk.hierarchicalTreeView.STATE_OPENED && child.isContainer) {
+        if (child.isContainer && child.isContainerOpen) {
             this_._expand_child_rows(child, newChildren);
         }
     })
@@ -302,7 +327,10 @@ PrefTreeView.prototype.removeFilter = function() {
     this.filtering = false;
     this._applyFilter(false);
     var oldCount = this._rows.length;
-    this._rows = this._unfilteredRows;
+    var showAdvanced = prefs.getBoolean("prefs_show_advanced", false);
+    this._rows = this._unfilteredRows.filter(function(row) {
+        return showAdvanced || ! row.advanced;
+    });
     this.tree.rowCountChanged(oldCount, this._rows.length - oldCount);
     this.tree.invalidate();
 };
@@ -318,6 +346,7 @@ PrefTreeView.prototype.updateFilter = function(urls) {
     var i, j, i1, row;
     var originalRows = this._rows;
     var oldCount = this._rows.length;
+    var showAdvanced = prefs.getBoolean("prefs_show_advanced", false);
     // assign the total rows to this._rows so getParentIndex can work
     this._rows = this._totalRows;
     this._rows.forEach(function(rowItem) {
@@ -329,7 +358,7 @@ PrefTreeView.prototype.updateFilter = function(urls) {
     var lim = this._rows.length;
     for (i = lim - 1; i >= 0; i--) {
         row = this._rows[i];
-        if (row.filteredOut && urls.indexOf(row.url) != -1) {
+        if (row.filteredOut && urls.indexOf(row.url) != -1 && (showAdvanced || !row.advanced)) {
             row.filteredOut = false;
             i1 = i;
             while ((j = this.getParentIndex(i1)) != -1) {
@@ -363,7 +392,7 @@ PrefTreeView.prototype.findChild = function(id) {
     var row, nodePath;
     for (var i = this._rows.length - 1; i >= 0; i--) {
         row = this._rows[i];
-        if (row.isContainer && row.state === xtk.hierarchicalTreeView.STATE_CLOSED) {
+        if (row.isContainer && !row.isContainerOpen) {
             nodePath = [];
             if (this._burrowForChildren(id, row, nodePath)) {
                 nodePath.unshift([row, i]);
@@ -380,7 +409,7 @@ PrefTreeView.prototype._openNodes = function(nodePath) {
     var i, lim, row, idx, prevIdx = 0;
     while (nodePath.length > 0) {
         [row, idx] = nodePath.shift();
-        if (row.isContainer && row.state === xtk.hierarchicalTreeView.STATE_CLOSED) {
+        if (row.isContainer && !row.isContainerOpen) {
             if (row == this._rows[idx]) {
                 this.toggleOpenState(idx);
                 prevIdx = idx;
@@ -515,6 +544,9 @@ this.updateFilter = function(target) {
         if (!target) {
             this.prefTreeView.removeFilter();
             return;
+        }
+        if (target == "-1") {
+            target = "";
         }
         // Support multi-word queries by splitting target on spaces
         // Interpret w1 w2 w3 ... wn into groups, where each run of

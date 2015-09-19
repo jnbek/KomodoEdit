@@ -9,21 +9,28 @@ import os, sys, logging
 # duplicate files ensures that SciMoz is definately in synch with
 # the relevant scintilla!
 
-scintillaFilesPath = ""
+scintillaIncPath = ""
+scintillaScriptsPath = ""
 
 log = logging.getLogger("xpfacer")
 
 try:
     import Face
 except ImportError:
-    scintillaFilesPath = os.path.abspath(
+    scintillaIncPath = os.path.abspath(
                 os.path.join(
                     os.path.split(sys.argv[0])[0], "../scintilla/include"
                 ))
-    if not os.path.isfile(os.path.join(scintillaFilesPath,"Scintilla.iface")):
+    scintillaScriptsPath = os.path.abspath(
+                os.path.join(
+                    os.path.split(sys.argv[0])[0], "../scintilla/scripts"
+                ))
+    if not os.path.isfile(os.path.join(scintillaIncPath,"Scintilla.iface")):
         print "WARNING: Expecting to find 'Face.py' and 'Scintilla.iface' in path"
-        print scintillaFilesPath, ", but I can't.  I'm probably gunna fail real-soon-now!"
-    sys.path.insert(0, scintillaFilesPath)
+        print scintillaIncPath, ", but I can't. "
+        print "I'm probably gunna fail real-soon-now!"
+    sys.path.insert(0, scintillaIncPath)
+    sys.path.insert(1, scintillaScriptsPath)
     import Face
 
 manualFunctions = """
@@ -31,6 +38,7 @@ manualFunctions = """
     getStyleRange assignCmdKey clearCmdKey getTextRange charPosAtPosition
     sendUpdateCommands getWCharAt addChar buttonDown buttonUp buttonMove endDrop
     annotationRemoveAtLine updateMarginWidths markerDefineRGBAImage
+    enablePluginVisibilityHack
     """.split()
 """ Implemented by hand
     note: items returning strings or complex types are easier to
@@ -70,12 +78,12 @@ manualGetterProperties = {
             return true;
             """
     },
-    "textHasChanged": {
-        "ReturnType": "bool",
+    "textId": {
+        "ReturnType": "long",
         "code": """
-            bool myresult;
-            GetTextHasChanged(&myresult);
-            BOOLEAN_TO_NPVARIANT(myresult, *result);
+            int32_t myresult;
+            GetTextId(&myresult);
+            INT32_TO_NPVARIANT(myresult, *result);
             return true;
             """,
     },
@@ -482,6 +490,7 @@ def generate_idl_constants_fragment(face):
     unwantedValues = ["SCI_START", "SCI_OPTIONAL_START", "SCI_LEXER_START"]
     outputfile = file("ISciMoz_gen.consts.fragment", "w")
     print "Dumping ISciMoz interface constants to %s" % outputfile.name
+    outputfile.write("%{C++\n#ifndef SCINTILLA_HIDE_DEFINES\n%}\n")
     for name in face.order:
         if name in unwantedValues:
             # we don't want to expose this constant
@@ -501,6 +510,7 @@ def generate_idl_constants_fragment(face):
                 "unsigned": "unsigned " if len(value) >= 10 and value.startswith("0x") else ""
               },
               file=outputfile)
+    outputfile.write("%{C++\n#endif\n%}\n")
 
 def generate_idl_method_fragment(feature, file, indent=8):
     """
@@ -533,7 +543,7 @@ def generate_idl_method_fragment(feature, file, indent=8):
         assert typeInfo[feature["Params"][0]["Type"]]["idlType"] == "long"
         assert typeInfo[feature["Params"][1]["Type"]]["idlDirection"] == "in"
         args = ["in nsIVariant text_or_length",
-                "[optional] in AUTF8String text_deprecated"]
+                "[optional] in AString text_deprecated"]
 
     log.debug("Writing IDL method %s", feature.get("Name"))
     if missingType is not None:
@@ -764,7 +774,7 @@ def generate_cxx_xpcom_method_fragment(feature, file):
         resultline = cxxGetterResultOverride
 
     if idlName(feature["Name"]) in textAndLengthFunctions:
-        args = ["nsIVariant* v", "const nsACString& t"]
+        args = ["nsIVariant* v", "const nsAString& t"]
         replacements["has_return"] = "0"
         if feature["ReturnType"] == "int":
             args.append("int32_t *_retval")
@@ -773,28 +783,18 @@ def generate_cxx_xpcom_method_fragment(feature, file):
         resultline = """
             nsresult rv;
             int32_t result;
+            nsAutoString text;
             if (t.IsVoid()) {
-                nsCString text;
-                rv = v->GetAsACString(text);
+                // Only one argument used, variant should be a string.
+                rv = v->GetAsAString(text);
                 NS_ENSURE_SUCCESS(rv, rv);
-                result = SendEditor(%(sciApiName)s, text.Length(),
-                                    reinterpret_cast<long>(text.get()));
             } else {
-                int32_t signed_length;
-                uint32_t length;
-                rv = v->GetAsInt32(&signed_length);
-                NS_ENSURE_SUCCESS(rv, rv);
-                if (signed_length >= 0) {
-                    length = static_cast<uint32_t>(signed_length);
-                    if (length > t.Length()) {
-                        length = t.Length();
-                    }
-                } else {
-                    length = static_cast<uint32_t>(-1);
-                }
-                result = SendEditor(%(sciApiName)s, length,
-                                    reinterpret_cast<long>(t.BeginReading()));
+                // Two arguments, we only want the string (second argument).
+                text = t;
             }
+            NS_ConvertUTF16toUTF8 textUtf8(text);
+            result = SendEditor(%(sciApiName)s, textUtf8.Length(),
+                                reinterpret_cast<long>(textUtf8.get()));
             #if %(has_return)s
                 *_retval = result;
             #endif /* %(has_return)s */
@@ -1235,10 +1235,6 @@ def generate_npapi_invoke_text_and_length_fragment(feature, file):
               }
               text = NPVARIANT_TO_STRING(args[1]).UTF8Characters;
               length = NPVARIANT_TO_STRING(args[1]).UTF8Length;
-              int32_t signed_length = NPVARIANT_TO_INT32(args[0]);
-              if (signed_length >= 0 && length > (uint32_t)signed_length) {
-                  length = static_cast<uint32_t>(signed_length);
-              }
           }
           int retval = SendEditor(%(messageName)s,
                                   length,
@@ -1900,7 +1896,7 @@ def main():
 
     # Generate the interface information and dump them to separate files
     face = Face.Face()
-    face.ReadFromFile(os.path.join(scintillaFilesPath, "Scintilla.iface"))
+    face.ReadFromFile(os.path.join(scintillaIncPath, "Scintilla.iface"))
     fixup_iface_data(face)
     generate_idl_constants_fragment(face)
     generate_idl_lite_fragment(face)

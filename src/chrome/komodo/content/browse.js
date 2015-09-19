@@ -49,7 +49,8 @@ if (typeof(ko)=='undefined') {
 ko.browse = {};
 (function() {
 
-var log = ko.logging.getLogger("browse");
+var {logging} = Components.utils.import("chrome://komodo/content/library/logging.js", {});
+var log = logging.getLogger("browse");
 var bundle = Components.classes["@mozilla.org/intl/stringbundle;1"]
         .getService(Components.interfaces.nsIStringBundleService)
         .createBundle("chrome://komodo/locale/browse.properties");
@@ -305,24 +306,19 @@ function getKomodoBugzillaQueryParams() {
 }
 
 // XXX move these to a properties file or prefs.js
+// XXX add links in HELP menu for:
+//   -home
+//   -aspn
 var tag2uri = {
-    'mailLists': "http://aspn.activestate.com/ASPN/Mail/Browse/Threaded/komodo-discuss",
-    'community': "http://community.activestate.com/products/Komodo",
-    'contactus': "http://www.activestate.com/company/contact-us"
+    'mailLists': "http://code.activestate.com/lists/komodo-discuss/",
+    'home': "http://komodoide.com/",  // this one
+    'aspn': "http://code.activestate.com/", // This one
+    'community': "http://forum.komodoide.com/",
+    'contactus': "http://www.activestate.com/company/contact-us",
+    'bugs': "https://github.com/Komodo/KomodoEdit/issues",
+    'packages': "http://komodoide.com/resources/",
+    'contribute': "http://komodoide.com/resources/submit-instructions/#pane-resources"
 };
-// Defines a lazy getter for "bugs" uri.
-Components.utils
-      .import("resource://gre/modules/XPCOMUtils.jsm", {})
-      .XPCOMUtils
-      .defineLazyGetter(tag2uri, "bugs", function()
-    {
-        var hash = getKomodoBugzillaQueryParams();
-        // Convert object pairs into an array of "foo=blah".
-        var params = Object.keys(hash).map(function(key) {
-                        return key+"="+encodeURIComponent(hash[key]);
-                     });
-        return "http://bugs.activestate.com/enter_bug.cgi?product=Komodo&" + params.join("&");
-    });
 
 /**
  * browse to a predefined url on activestate.com  see tag2uri in ko.browse
@@ -331,9 +327,10 @@ this.browseTag = function(tag) {
     if (tag in tag2uri) {
         ko.browse.openUrlInDefaultBrowser(tag2uri[tag]);
     } else {
-        ko.statusBar.AddMessage(
-            "ko.browse.browseTag error: unknown tag '"+tag+"'",
-            "browse", 3000, true);
+        require("notify/notify").send(
+            "ko.browse.browseTag error: unknown tag '"+tag+"'", "browser",
+            "browser", {priority: "error"}
+        );
     }
 }
 }).apply(ko.browse);

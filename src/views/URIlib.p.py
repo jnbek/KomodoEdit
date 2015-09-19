@@ -388,6 +388,10 @@ class URIParser(object):
                 else:
                     sortaURI = path2
             elif path[0] == '/':       # Absolute Unix path
+                # Fix double-root paths, by collapsing them - bug 106180.
+                path = os.path.normpath(path)
+                if path.startswith("//"):
+                    path = path[1:]
                 sortaURI = "file://" + path
             elif path[1:2] == ':':  # Looks like an absolute Windows path
                 # We allow Windows file paths on Unix, for things like mapped
@@ -779,54 +783,6 @@ class URIHandler(FileHandlerBase):
         return self._stats
     stats = property(get_stats)
 
-class StartPageHandler(FileHandlerBase):
-
-    isLocal = 0
-    isRemoteFile = 0
-    
-    @LazyClassAttribute
-    def displayPath(self):
-        """A HACK to override the start page view's document.file.displayPath
-        until http://bugs.activestate.com/show_bug.cgi?id=25526 is
-        implemented.
-        """
-        bundle = components.classes["@mozilla.org/intl/stringbundle;1"].\
-                 getService(components.interfaces.nsIStringBundleService).\
-                 createBundle("chrome://komodo/locale/komodo.properties")
-        return bundle.GetStringFromName("startPageDisplayPath")
-
-    def __init__(self, path):
-        FileHandlerBase.__init__(self)
-        if path != "chrome://komodo/content/startpage/startpage.xml#view-startpage":
-            raise URILibError("Invalid Start Page path: %s" % path)
-    
-    def __del__(self):
-        pass
-
-    def close(self):
-        pass
-        
-    def open(self, mode):
-        return 0
-
-    def __get_stats(self):
-        _stats = {'mode':'','ino':'','dev':'','nlink':'',
-                  'uid':'','gid':'','fileSize':0,
-                  'lastModifiedTime':0,'createdTime':0,'isReadable':1,
-                  'isWriteable':0,'isExecutable':0,'isReadOnly':1,
-                  'isReadWrite':0,'exists':1,'isDirectory':0,
-                  'isFile':1,'isSymlink':0,'isSpecial':0,'permissions':0,
-                  'isHidden':0}
-        # XXX need to implement this stuff from nsIFile stuff
-        return _stats
-    
-    def get_stats(self):
-        if not self._stats:
-            self._stats = self.__get_stats()
-        return self._stats
-    stats = property(get_stats)
-
-    
 class xpURIHandler(FileHandlerBase):
     isLocal = 0
     isRemoteFile = 0

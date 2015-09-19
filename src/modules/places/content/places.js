@@ -83,7 +83,7 @@ const DEFAULT_INCLUDE_MATCHES = "";
 const PROJECT_URI_REGEX = /^.*\/(.+?)\.(?:kpf|komodoproject)$/;
 
 var log = ko.logging.getLogger("places_js");
-log.setLevel(ko.logging.LOG_DEBUG);
+//log.setLevel(ko.logging.LOG_DEBUG);
 
 // Yeah, not really a class per se, but it acts like one, so
 // give it an appropriate name.
@@ -347,6 +347,9 @@ viewMgrClass.prototype = {
                 this._openFolder(index);
             }
             this.tree.treeBoxObject.invalidate();
+
+            require("ko/dom")(window.parent).trigger("folder_touched", {path: dir});
+
         }.bind(this);
         ko.views.manager.newTemplateAsync(dir, callback);
     },
@@ -358,14 +361,19 @@ viewMgrClass.prototype = {
         try {
             this.view.addNewFileAtParent(name, index);
             this.tree.treeBoxObject.invalidate();
-            let parentURI = (index >= 0
+            var parentURI = (index >= 0
                              ? this.view.getURIForRow(index)
                              : ko.places.manager.currentPlace);
             ko.views.manager.doFileOpenAsync(parentURI + "/" + name);
             this._openFolder(index);
         } catch(ex) {
             ko.dialogs.alert(ex);
+        } finally {
+            var sdkFile = require("ko/file");
+            require("ko/dom")(window.parent).trigger("folder_touched",
+                                                  {path: ko.uriparse.URIToPath(parentURI)});
         }
+
     },
 
     addNewFolder: function() {
@@ -377,6 +385,13 @@ viewMgrClass.prototype = {
             this._openFolder(index);
         } catch(ex) {
             ko.dialogs.alert(ex);
+        } finally {
+            var parentURI = (index >= 0
+                             ? this.view.getURIForRow(index)
+                             : ko.places.manager.currentPlace);
+            var sdkFile = require("ko/file");
+            require("ko/dom")(window.parent).trigger("folder_touched",
+                                                  {path: ko.uriparse.URIToPath(parentURI)});
         }
     },
 
@@ -388,7 +403,7 @@ viewMgrClass.prototype = {
             this.view.markRow(index);
         }
 
-        if (ko.prefs.getBoolean('pref_places_singleClickExpand', false)) {
+        if (this.view.isContainer(index) && ko.prefs.getBoolean('pref_places_singleClickExpand', false)) {
             this.view.toggleOpenState(index);
         }
     },
@@ -793,7 +808,7 @@ viewMgrClass.prototype = {
 
     _dropProblem: function(msg) {
         log.error(msg);
-        ko.statusBar.AddMessage(msg, "editor", 10 * 1000, true);
+        require("notify/notify").send(msg, "places", {priority: "error"});
         return false;
     },
     
@@ -1941,8 +1956,28 @@ ManagerClass.prototype = {
         try {
             gPlacesViewMgr.finishFileCopyOperation(srcURIs, target_uri, index,
                                                     isCopying);
+
         } catch(ex) {
             ko.dialogs.alert(ex);
+        } finally {
+            var sdkFile = require("ko/file"),
+                w       = require("ko/dom")(window.parent);
+
+            w.trigger(
+                "folder_touched",
+                {path: sdkFile.dirname(ko.uriparse.URIToPath(target_uri)) }),
+                triggered = {};
+
+            if ( ! isCopying)
+            {
+                srcURIs.forEach(function(uri) {
+                    if (uri in triggered) return;
+
+                    var path = sdkFile.dirname(ko.uriparse.URIToPath(uri));
+                    w.trigger("folder_touched", {path: path });
+                    triggered[uri] = true;
+                });
+            }
         }
         if (!isCopying) {
             xtk.clipboard.emptyClipboard();
@@ -2071,6 +2106,11 @@ ManagerClass.prototype = {
                     if (result == response) {
                         try {
                             gPlacesViewMgr.view.renameItem(index, newname, true);
+
+                            require("ko/dom")(window).trigger(
+                                "file_touched",
+                                {path: ko.uriparse.URIToPath(uri) });
+
                         } catch(ex2) {
                             if (this._doRenameItem_files_are_same_re.test(ex2.message)) {
                                 ko.dialogs.alert(_bundle.formatStringFromName("Files X and X are the same, rename stopped.template", [oldname, newname], 2));
@@ -2105,19 +2145,7 @@ ManagerClass.prototype = {
             }
             [oldname, newname, carryOn] = this.promptForNewName(uri);
             if (!carryOn) return;
-            var newPath = moreKomodoCommon.renameFile(viewDoc.displayPath, newname);
-            if (newPath) {
-                // Reopen file at same tab position
-                var newDoc = moreKomodoCommon.createDocumentFromURI(newPath);
-                // the observer will set the new document also for this view
-                var data = {document : viewDoc,
-                            newDocument : newDoc,
-                            command : "rename"
-                };
-                data.wrappedJSObject = data;
-                var obs = moreKomodoCommon.getObserverService();
-                obs.notifyObservers(data, "morekomodo_command", null);
-            }
+            moreKomodoCommon.renameFile(uri, newname);
         }
     },
 
@@ -2183,6 +2211,18 @@ ManagerClass.prototype = {
         } catch(ex) {
             alert(ex);
         }
+        finally {
+            var sdkFile = require("ko/file"),
+                w       = require("ko/dom")(window.parent),
+                triggered= {};
+            uris.forEach(function(uri) {
+                if (uri in triggered) return;
+
+                var _path = sdkFile.dirname(ko.uriparse.URIToPath(uri));
+                w.trigger("folder_touched", {path: _path});
+                triggered[uri] = true;
+            });
+        }
     },
     /*
 
@@ -2220,7 +2260,7 @@ ManagerClass.prototype = {
                             ("Directory X no longer exists",
                              [ko.uriparse.baseName(uri)], 1);
                         //log.info(msg);
-                        ko.statusBar.AddMessage(msg, "editor", 10 * 1000, true);
+                        require("notify/notify").send(msg, "places", {priority: "warning"});
                         _globalPrefs.getPref("places").deletePref(parent._koNum);
                         uri = null;
                     }
@@ -2786,10 +2826,8 @@ ManagerClass.prototype = {
             return t1.length - t2.length;
         }
         var removeOldestViewTrackers = function(prefName, maxArraySize) {
-            var ids = {};
             var uriPrefs = _placePrefs.getPref(prefName);
-            uriPrefs.getPrefIds(ids, {});
-            ids = ids.value;
+            var ids = uriPrefs.getPrefIds();
             if (ids.length > maxArraySize) {
                 var nameValueTimeArray = ids.map(function(id) {
                         var pref = uriPrefs.getPref(id);
@@ -3267,9 +3305,7 @@ this.updateFilterViewMenu = function() {
             menupopup.removeChild(node);
         }
     }
-    var ids = {};
-    filterPrefs.getPrefIds(ids, {});
-    ids = ids.value;
+    var ids = filterPrefs.getPrefIds();
     var sep = document.getElementById("places_manage_view_separator");
     var menuitem;
     var addedCustomFilter = false;

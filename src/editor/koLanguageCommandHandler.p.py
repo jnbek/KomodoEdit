@@ -810,6 +810,14 @@ class GenericCommandHandler:
         # Closing a tag means "the selected autocomplete text is preceeded by
         # "</" (since the autocomplete is the tag name plus ">")
         sm = self._view.scimoz
+        if sm.selections > 1:
+            # TODO: if there are multiple selections present, there's no telling
+            # which of them was emitted by the "codeintel_autocomplete_selected"
+            # event. Thus `start_pos` is not guaranteed to be behind
+            # `sm.currentPos`; this may cause memory access errors and crashes.
+            # For now, don't bother to autocomplete multiple selections; the
+            # method needs to be reworked anyway.
+            return
         langObj = self._view.languageObj
         if start_pos > 1 and langObj.supportsXMLIndentHere(sm, sm.currentPos):
             text = sm.getStyledText(start_pos - 2, sm.currentPos)[0::2]
@@ -1686,15 +1694,23 @@ class GenericCommandHandler:
 
     def _insertIndent(self):
         sm = self._view.scimoz
+        indent = sm.indent
+        if indent <= 0:
+            log.warn("scimoz indent is %d - that should never happen", indent)
+            indent = self._view.prefs.getLong('indentWidth', 4)
+            if indent <= 0:
+                log.warn("indentWidth pref is %d - that should never happen", indent)
+                indent = 4
+            sm.indent = indent
         currentLineNo = sm.lineFromPosition(sm.currentPos)
         lineStart = sm.positionFromLine(currentLineNo)
         toLeft = sm.getTextRange(lineStart, sm.currentPos)
         if not toLeft.strip(): # we've got nothing but whitespace to our left:
             currentIndentWidth = self._getIndentWidthForLine(currentLineNo,
                                                             sm.currentPos)
-            numIndents, extras = divmod(currentIndentWidth, sm.indent)
+            numIndents, extras = divmod(currentIndentWidth, indent)
             numIndents += 1
-            newIndentWidth = numIndents * sm.indent
+            newIndentWidth = numIndents * indent
             newIndent = scimozindent.makeIndentFromWidth(sm, newIndentWidth)
             sm.anchor = sm.positionFromLine(currentLineNo)
             sm.replaceSel(newIndent)
@@ -1703,9 +1719,9 @@ class GenericCommandHandler:
             # all of the whitespace around the cursor to tabs
             # if appropriate
             startCol = sm.getColumn(sm.currentPos)
-            numIndents, extras = divmod(startCol, sm.indent)
+            numIndents, extras = divmod(startCol, indent)
             numIndents += 1
-            targetCol = numIndents * sm.indent
+            targetCol = numIndents * indent
             if sm.useTabs:
                 sm.replaceSel('\t')
             else:

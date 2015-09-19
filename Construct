@@ -61,11 +61,10 @@ my @toExport = (
     'withCasper',
     'withJSLib',
     'withWatchdogFSNotifications',
+    'withPGOGeneration',
+    'withPGOCollection',
     'withDocs',
     'withKomodoCix',
-    'withStackato',
-    'xulrunner', # xulrunner based builds
-    'xulrunnerBuildId',
     'universal', # universal binary builds for osx
 
     'ludditeVersion',
@@ -301,16 +300,22 @@ elsif ($platform eq "darwin") {
     $environ{LDFLAGS} .= " -arch x86_64";
 
     # Use 10.6 as the minimum required version.
-    $environ{CFLAGS} .= ' -mmacosx-version-min=10.6';
-    $environ{CXXFLAGS} .= ' -mmacosx-version-min=10.6';
-    $environ{LDFLAGS} .= ' -mmacosx-version-min=10.6';
+    $environ{CFLAGS} .= ' -mmacosx-version-min=10.9';
+    $environ{CXXFLAGS} .= ' -mmacosx-version-min=10.9';
+    $environ{LDFLAGS} .= ' -mmacosx-version-min=10.9';
 }
 
-
-# Needed for p4 calls in processes kicked off by Cons.
-foreach my $envvar (keys %ENV) {
-    if ($envvar =~ /^P4/) {
-        $environ{$envvar} = $ENV{$envvar};
+if ($withPGOGeneration) {
+    if ($platform eq "linux") {
+        $environ{CFLAGS}   .= " -fprofile-generate";
+        $environ{CXXFLAGS} .= " -fprofile-generate";
+        $environ{LDFLAGS}  .= " -fprofile-generate";
+    }
+} elsif ($withPGOCollection) {
+    if ($platform eq "linux") {
+        $environ{CFLAGS}   .= " -fprofile-use -fprofile-correction";
+        $environ{CXXFLAGS} .= " -fprofile-use -fprofile-correction";
+        $environ{LDFLAGS}  .= " -fprofile-use -fprofile-correction";
     }
 }
 
@@ -352,12 +357,12 @@ Build(
     "$build/chrome/komodo/content/dialogs/filebrowser/Conscript",
     "$build/chrome/komodo/content/extmgr/Conscript",
     "$build/chrome/komodo/content/library/Conscript",
+    "$build/chrome/komodo/content/sdk/Conscript",
     "$build/chrome/komodo/content/lint/Conscript",
     "$build/chrome/komodo/content/keybindings/Conscript",
     "$build/chrome/komodo/content/find/Conscript",
     "$build/chrome/komodo/content/pref/Conscript",
     "$build/chrome/komodo/content/project/Conscript",
-    "$build/chrome/komodo/content/startpage/Conscript",
     "$build/chrome/komodo/content/tail/Conscript",
     "$build/chrome/komodo/content/templates/Conscript",
     "$build/chrome/komodo/content/toolbox/Conscript",
@@ -367,8 +372,6 @@ Build(
     "$build/chrome/komodo/skin/global/Conscript",
     "$build/chrome/komodo/skin/global/images/Conscript",
     "$build/chrome/komodo/skin/images/Conscript",
-    "$build/chrome/komodo/skin/startpage/Conscript",
-    "$build/chrome/komodo/skin/startpage/images/Conscript",
     "$build/chrome/komodo/content/run/Conscript",
     "$build/chrome/komodo/content/hyperlinks/Conscript",
     "$build/chrome/komodo/content/morekomodo/Conscript",
@@ -414,32 +417,45 @@ Build(
     "$build/views/Conscript",
     "prebuilt/Conscript",
       
-    "$build/modules/fastopen/Conscript",
     "$build/modules/koextgen/Conscript",
     "$build/modules/places/Conscript",
     "$build/modules/breadcrumbs/Conscript",
     "$build/modules/openfiles/Conscript",
     "$build/modules/getstarted/Conscript",
+    "$build/modules/golang/Conscript",
+    "$build/modules/markdown-viewer/Conscript",
     "$build/modules/rails/Conscript",
     "$build/modules/spellcheck/Conscript",
     "$build/modules/trackchanges/Conscript",
     "$build/modules/zendframework/Conscript",
-    "$build/modules/abyss_skin/Conscript",
     "$build/modules/classic_skin/Conscript",
     "$build/modules/analytics/Conscript",
     "$build/modules/commando/Conscript",
     "$build/modules/scope_files/Conscript",
     "$build/modules/scope_tools/Conscript",
+    "$build/modules/scope_commands/Conscript",
+    "$build/modules/scope_openfiles/Conscript",
+    "$build/modules/scope_bookmarks/Conscript",
+    "$build/modules/scope_combined/Conscript",
+    "$build/modules/scope_packages/Conscript",
+    "$build/modules/kopy/Conscript",
+    "$build/modules/notify/Conscript",
+    "$build/modules/editorconfig/Conscript",
+    "$build/modules/focusmode/Conscript",
 
     "$build/modules/iconset_ambiance/Conscript",
     "$build/modules/iconset_blue/Conscript",
     "$build/modules/iconset_classic/Conscript",
     "$build/modules/iconset_cupertino/Conscript",
     "$build/modules/iconset_cupertino_blue/Conscript",
+    "$build/modules/iconset_yosemite/Conscript",
     "$build/modules/iconset_dark/Conscript",
     "$build/modules/iconset_light/Conscript",
     "$build/modules/iconset_orange/Conscript",
     "$build/modules/iconset_radiance/Conscript",
+    "$build/modules/icomoon/Conscript",
+
+    "$build/modules/check_compatibility/Conscript",
 
     # 3rd-party contributed code in contrib/...
     "$contribBuild/Conscript",
@@ -451,30 +467,22 @@ if ($platform eq "linux") {
         "$build/modules/gtk_ambiance/Conscript",
         "$build/modules/gtk_dark/Conscript",
         "$build/modules/gtk_elementary/Conscript",
+        "$build/modules/gtk_numix/Conscript",
         "$build/modules/gtk_radiance/Conscript",
     );
 }
 
 if ($withTests) {
     Build(
+	"$build/scintilla/headless/Conscript",
 	"$testBuild/pyxpcom/Conscript",
 	"$testBuild/jstest/Conscript",
     );
-    # Headless scintilla for testing.
-    if ($platform eq "linux" || $platform eq "darwin") {
-	Build(
-	    "$build/scintilla/headless/Conscript",
-	);
-    }
 }
 
 if ($withCasper) {
     Build(
         "$build/modules/casper/Conscript",
-        "$build/modules/casper/components/Conscript",
-        "$build/modules/casper/skin/Conscript",
-        "$build/modules/casper/content/Conscript",
-        "$build/modules/casper/content/test/Conscript",
     );
 }
 
@@ -493,12 +501,6 @@ if ($buildFlavour ne "full") {
         "$build/images/gtkstock/Conscript",
     );
     }
-}
-
-if ($withStackato) {
-    Build(
-	"$build/modules/stackato/Conscript",
-    );
 }
 
 if ($platform eq "win") {
@@ -583,6 +585,9 @@ sub cons::KoExt {
     if (defined($xpi_path)) {
         $landmark = $xpi_path;
         my $abs_xpi_path = cwd()."/".FilePath($xpi_path);
+		if (file_name_is_absolute($xpi_path)) {
+			$abs_xpi_path = $xpi_path;
+		}
         $extra_options .= "-o $abs_xpi_path";
     }
     my $abs_builddir = cwd()."/".DirPath($buildDir);
@@ -728,6 +733,8 @@ sub cons::Preprocess {
         die "*** 'mozVersion' is not defined for " .
         "Preprocess(). You need to 'Import' it.\n";
     $substStr .= " -D MOZILLA_VERSION=$mozVersion";
+    my $mozVersionMajor = int($mozVersion);
+    $substStr .= " -DMOZILLA_VERSION_MAJOR=$mozVersionMajor";
     
     #XXX Would prefer that each of these grow the checking that the other
     #    vars have to _require_ that they be defined. This will avoid

@@ -42,6 +42,7 @@ import glob
 import fnmatch
 import re
 import logging
+import operator
 from pprint import pprint, pformat
 
 from xpcom import components, nsError, ServerException, COMException, _xpcom
@@ -52,6 +53,8 @@ from koTreeView import TreeView
 import which
 
 import koXMLTreeService
+
+from zope.cachedescriptors.property import LazyClassAttribute
 
 log = logging.getLogger('koLanguage')
 #log.setLevel(logging.DEBUG)
@@ -139,6 +142,19 @@ class KoLanguageRegistryService:
     # - All we need to note here are exceptions in the naming scheme,
     #   like "mode: C" which corresponds to Komodo's C++ language.
     _modeName2LanguageName = {}
+
+    # Cached services - saved on the class.
+    _globalPrefSvc = None
+    _globalPrefs = None
+
+    # Lazily loaded class variables.
+    @LazyClassAttribute
+    def _globalPrefSvc(self):
+        return components.classes["@activestate.com/koPrefService;1"].\
+                    getService(components.interfaces.koIPrefService)
+    @LazyClassAttribute
+    def _globalPrefs(self):
+        return self._globalPrefSvc.prefs
     
     def __init__(self):
         self.__initPrefs()
@@ -353,8 +369,10 @@ class KoLanguageRegistryService:
                 primaries.append(languageName)
             else:
                 others.append(languageName)
-        primaries.sort()
-        others.sort()
+
+        # Sort by language name - case insensitive.
+        primaries.sort(key=lambda x: x.lower())
+        others.sort(key=lambda x: x.lower())
 
         otherContainer = KoLanguageContainer('Other',
             [KoLanguageItem(ln, self.__accessKeyFromLanguageName.get(ln, ""))
@@ -858,10 +876,15 @@ class KoLanguageRegistryService:
         currentProject = components.classes["@activestate.com/koPartService;1"]\
             .getService(components.interfaces.koIPartService).currentProject
         if currentProject:
+            if currentProject.prefset.getBoolean("preferJavaScriptOverNode", False):
+                return "JavaScript"
+
             prefset = currentProject.prefset
             if prefset.hasPref("currentInvocationLanguage") \
                and prefset.getStringPref("currentInvocationLanguage") == "Node.js":
                 return "Node.js"
+        elif self._globalPrefs.getBoolean("preferJavaScriptOverNode", False):
+            return "JavaScript"
         if not buffer:
             return "JavaScript"
         nodeJSAppInfo = components.classes["@activestate.com/koAppInfoEx?app=NodeJS;1"].\

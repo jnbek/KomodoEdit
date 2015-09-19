@@ -184,16 +184,97 @@ MoreKomodoCommon.renameFile = function(uri, newName, askConfirm) {
         }
         newPath = koFileEx.scheme + "://" + koFileEx.server
                     + "/" + koFileEx.dirName + "/" + newName;
-    } else if (koFileEx.isFile) {
+    } else {
         var oldLocalFile = MoreKomodoCommon.makeLocalFile(oldPath);
         var newLocalFile = MoreKomodoCommon.makeLocalFile(oldLocalFile.parent, [newName]);
         if (!newLocalFile.exists() || canRename(newLocalFile.isFile(), newName)) {
             newPath = newLocalFile.path;
             oldLocalFile.moveTo(null, newName);
         }
+        
+        var sdkFile = require("ko/file");
+        require("ko/dom")(window.parent).trigger("folder_touched", {path: sdkFile.dirname(newPath)});
+    }
+
+    var viewDoc, oldView = ko.views.manager.getViewForURI(uri)
+    if (oldView) viewDoc = oldView.koDoc;
+    if (oldView && MoreKomodoCommon.dirtyDocCheck(viewDoc)) {
+        // Reopen file at same tab position
+        var newDoc = MoreKomodoCommon.createDocumentFromURI(newPath);
+        // the observer will set the new document also for this view
+        var data = {document : viewDoc,
+                    newDocument : newDoc,
+                    command : "rename"
+        };
+        data.wrappedJSObject = data;
+        var obs = MoreKomodoCommon.getObserverService();
+        obs.notifyObservers(data, "morekomodo_command", null);
     }
 
     return newPath;
+}
+
+MoreKomodoCommon.moveFile = function(path, newPath, command = "move") {
+    var currentPath = MoreKomodoCommon.makeLocalFile(path);
+    var file;
+    if ( ! newPath)
+    {
+        var msg = MoreKomodoCommon.getLocalizedMessage("select.move.file.title");
+        var fp = MoreKomodoCommon.makeFilePicker(window,
+                    msg,
+                    Components.interfaces.nsIFilePicker.modeSave,
+                    currentPath.parent);
+        fp.defaultString = currentPath.leafName;
+        var res = fp.show();
+        var isOk = (res == Components.interfaces.nsIFilePicker.returnOK
+                    || res == Components.interfaces.nsIFilePicker.returnReplace);
+
+        if (isOk && fp.file)
+        {
+            file = fp.file;
+
+            if (file.exists()) {
+                file.remove(false);
+            }
+        }
+        else
+        {
+            return false;
+        }
+    }
+    else
+    {
+        file = MoreKomodoCommon.makeLocalFile(newPath);
+
+        if (file.exists())
+        {
+            require("notify").send("Could not "+command+" file, destination already exists",
+                                      "fs", {priority: "warning"});
+            return false;
+        }
+    }
+
+    currentPath.copyTo(file.parent, file.leafName);
+    if (command == "move") MoreKomodoCommon.deleteFile(path);
+
+    var viewDoc, oldView = ko.views.manager.getViewForURI(path)
+    if (oldView) viewDoc = oldView.koDoc;
+    if (oldView && MoreKomodoCommon.dirtyDocCheck(viewDoc)) {
+        // Reopen file at same tab position
+        var newDoc = MoreKomodoCommon.createDocumentFromURI(file.path);
+        // the observer will set the new document also for this view
+        var data = {document : viewDoc,
+                    newDocument : newDoc,
+                    command : command
+                    };
+        data.wrappedJSObject = data;
+        var obs = MoreKomodoCommon.getObserverService();
+        obs.notifyObservers(data, "morekomodo_command", null);
+    }
+
+    var sdkFile = require("ko/file");
+    require("ko/dom")(window.parent).trigger("folder_touched", {path: sdkFile.dirname(path)});
+    require("ko/dom")(window.parent).trigger("folder_touched", {path: sdkFile.dirname(newPath)});
 }
 
 MoreKomodoCommon.deleteFile = function(uri) {
@@ -208,6 +289,9 @@ MoreKomodoCommon.deleteFile = function(uri) {
         conn.removeFile(path);
     } else {
         MoreKomodoCommon.makeLocalFile(path).remove(false);
+        
+        var sdkFile = require("ko/file");
+        require("ko/dom")(window.parent).trigger("folder_touched", {path: sdkFile.dirname(path)});
     }
 }
 

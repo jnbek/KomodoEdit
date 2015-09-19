@@ -96,10 +96,16 @@ function onLoad(event) {
         var language = 'Text';
 
         snippetvalue.initWithBuffer(text, language);
-
+        
+        // On Mac OSX, ensure the Scintilla view is visible by forcing a repaint.
+        // TODO: investigate why this happens and come up with a better solution.
+        // NOTE: repainting a Scintilla view by itself is not sufficient;
+        // Mozilla needs to repaint the entire window.
         if (navigator.platform.match(/^Mac/)) {
-            // Bug 96209, bug 99277 - hack around scintilla display problems on the mac.
-            setTimeout(function() { snippetvalue.scintilla.setAttribute("flex", "2"); }, 1);
+            window.setTimeout(function() {
+                window.resizeBy(1, 0);
+                window.resizeBy(-1, 0);
+            }, 10);
         }
 
         scin = snippetvalue.scimoz;
@@ -434,7 +440,7 @@ function InsertShortcut(shortcutWidget) {
 function update_icon(URI)
 {
     try {
-        if (URI == 'chrome://komodo/skin/images/snippet.png') {
+        if (URI == 'chrome://komodo/skin/images/toolbox/snippet.svg') {
             document.getElementById('reseticon').setAttribute('disabled', 'true');
         } else {
             if (document.getElementById('reseticon').hasAttribute('disabled')) {
@@ -461,7 +467,7 @@ function pick_icon(useDefault /* false */)
             URI = ko.dialogs.pickIcon();
             if (!URI) return;
         } else {
-            URI = 'chrome://komodo/skin/images/cut.png';
+            URI = 'chrome://komodo/skin/images/toolbox/snippet.svg';
         }
         update_icon(URI);
         updateOK();

@@ -15,7 +15,7 @@
 
 <window xmlns:html="http://www.w3.org/1999/xhtml"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        class="kodialog"
+        class="kodialog pref-window"
         orient="vertical"
         onload="docSyntaxCheckingOnLoad();">
 
@@ -45,6 +45,10 @@
             <checkbox id="lintEOLs"
                       style="margin-left: 27px;"
                       label="&lintEOLs.label;"
+                      pref="true"/>
+            <checkbox id="lintShowResultsInline"
+                      style="margin-left: 27px;"
+                      label="&lintShowResultsInline.label;"
                       pref="true"/>
             <checkbox id="lintClearOnTextChange"
                       style="margin-left: 27px;"
@@ -459,7 +463,7 @@
                      <hbox id="pep8_checking_hbox_rcfile">
                        <textbox id="pep8_checking_rcfile" pref="true"
                                 prefstring="pep8_checking_rcfile" flex="1"/>
-                       <button id="pep8_browse_rcfile" label="&browse.label;" oncommand="languageInfo.Python.loadPylintRcfile();"/>
+                       <button id="pep8_browse_rcfile" label="&browse.label;" oncommand="languageInfo.Python.loadPep8Rcfile();"/>
                     </hbox>
                   </vbox>
                   <separator class="thin"/>

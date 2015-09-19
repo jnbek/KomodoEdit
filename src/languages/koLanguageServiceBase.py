@@ -1148,9 +1148,7 @@ class KoLanguageBase:
                                   '"': ('"', self.softchar_accept_matching_double_quote),
                                   "'": ("'", self.softchar_accept_matching_single_quote),
                                   }
-        obsSvc = components.classes["@mozilla.org/observer-service;1"].\
-                       getService(components.interfaces.nsIObserverService)
-        obsSvc.addObserver(self, 'xpcom-shutdown', False)
+
         prefObserver = self.prefset.prefObserverService
         prefObserver.addObserver(self, 'indentStringsAfterParens', True)
         prefObserver.addObserver(self, 'editSmartSoftCharacters', True)
@@ -1161,6 +1159,15 @@ class KoLanguageBase:
         self._dedentOnColon = self.prefset.getBooleanPref("dedentOnColon")
         self._codeintelAutoInsertEndTag = self.prefset.getBooleanPref("codeintelAutoInsertEndTag")
         self._fastCharData = None
+
+        # nsIObserverService must be called on the main thread - bug 96530.
+        @components.ProxyToMainThread
+        def ProxyAddObserver(obj):
+            obsSvc = components.classes["@mozilla.org/observer-service;1"].\
+                           getService(components.interfaces.nsIObserverService)
+            obsSvc.addObserver(obj, 'xpcom-shutdown', False)
+        ProxyAddObserver(self)
+
 
     def observe(self, subject, topic, data):
         if topic == 'xpcom-shutdown':
@@ -2584,8 +2591,15 @@ class KoLanguageBase:
         tagStartPos_Buf = -1
         startOfLine_Buf = startOfLine_Doc - startPos_Doc
         index_Buf = index_Doc - startPos_Doc
+        index_Buf_Prev = -1
         
         while index_Buf > 0:
+            
+            # Avoid getting stuck in an infinite loop, see bug #186
+            if index_Buf_Prev == index_Buf:
+                index_Buf -= 1
+            index_Buf_Prev = index_Buf
+            
             char = beforeText[index_Buf]
             style = beforeStyles[index_Buf] # scimoz.getStyleAt(index_Doc)
             state = self._findXMLState(scimoz, index_Doc, char, style)
@@ -3269,9 +3283,9 @@ def _findIndent(scimoz, chars, styles, comment_styles, tabWidth, defaultUsesTabs
         tabWidth:
             what a tab character should be counted as (almost always 8).
     
-    At most the first 100 lines are looked at.
+    At most the first 300 lines are looked at.
     
-    As a side effect, the first 100 lines of the buffer will be 'colourised' if they
+    As a side effect, the first 300 lines of the buffer will be 'colourised' if they
     are not already.
     """
     textLength = scimoz.length
@@ -3288,8 +3302,8 @@ def _findIndent(scimoz, chars, styles, comment_styles, tabWidth, defaultUsesTabs
         scimoz.colourise(scimoz.endStyled, end)
     data = scimoz.getStyledText(0, end)
     # data is a list of (character, styleNo)
-    usesTabs = 0
-    sawSufficientWhiteSpace = False
+    tabcount = 0
+    spacecount = 0
 
     for lineNo in range(N):
         # the outer loop tries to find the 'indenting' line.
@@ -3302,9 +3316,9 @@ def _findIndent(scimoz, chars, styles, comment_styles, tabWidth, defaultUsesTabs
                     line = scimoz.getTextRange(lineStartPos, lineEndPos)
                     blackPos = len(line) - len(line.lstrip())
                     if '\t' in line[:blackPos]:
-                        usesTabs = 1
+                        tabcount += 1
                     elif blackPos >= tabWidth:
-                        sawSufficientWhiteSpace = True
+                        spacecount += 1
             continue
         lineEndPos = scimoz.getLineEndPosition(lineNo)
         if lineNo == N - 1 and lineEndPos == end:
@@ -3344,11 +3358,11 @@ def _findIndent(scimoz, chars, styles, comment_styles, tabWidth, defaultUsesTabs
                                 line = scimoz.getTextRange(lineStartPos, lineEndPos)
                                 blackPos = len(line) - len(line.lstrip())
                                 if '\t' in line[:blackPos]:
-                                    usesTabs = 1
+                                    tabcount += 1
                                     break
                                 elif blackPos >= tabWidth:
-                                    sawSufficientWhiteSpace = True
-                        return guess, usesTabs or (not sawSufficientWhiteSpace and defaultUsesTabs)
+                                    spacecount += 1
+                        return guess, tabcount > spacecount or (tabcount and defaultUsesTabs)
                     else:
                         # probably an empty block
                         raise _NextLineException()

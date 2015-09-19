@@ -215,9 +215,8 @@ this.expandAbbrev = function expandAbbrev(abbrev /* =null */,
             // Only do abbreviation expansion if next to a word char,
             // i.e. valid abbrev chars.
             if (pos == 0 || !is_abbrev(scimoz.getTextRange(prevPos, pos))) {
-                ko.statusBar.AddMessage(
-                    lazy.bundle.GetStringFromName("noAbbreviationAtTheCurrentPosition"),
-                    "abbrev", 5000, false);
+                var msg =  lazy.bundle.GetStringFromName("noAbbreviationAtTheCurrentPosition");
+                require("notify/notify").send(msg, "tools", {priority: "warning"});
                 return false;
             }
         }
@@ -259,7 +258,7 @@ this.expandAbbrev = function expandAbbrev(abbrev /* =null */,
         scimoz.currentPos = origPos;
         scimoz.anchor = origAnchor;
     }
-    ko.statusBar.AddMessage(msg, "Editor", 5000, true);
+    require("notify/notify").send(msg, "tools", {priority: "warning"});
     return false;
 };
 
@@ -337,20 +336,34 @@ this.expandAutoAbbreviation = function(currView) {
         scimoz.currentPos = wordStartPos;
         scimoz.anchor = currentPos;
         if (ko.abbrev.insertAbbrevSnippet(snippet, currView)) {
-            var pathPart = ko.snippets.snippetPathShortName(snippet);
-            var options = {
-                severity: Components.interfaces.koINotification.SEVERITY_INFO };
-            var identifier = "edit-snippet-" + pathPart;
-            var act = { label: lazy.bundle.GetStringFromName("Edit Snippet"),
-                        identifier: snippet.url,
-                        handler: function(notification, url) {
-                              ko.open.URI(url);
-                        }
-            };
-            options.actions = [act];
             var msg = lazy.bundle.formatStringFromName("inserted autoabbreviation X",
-                                                   [pathPart], 1);
-            ko.notifications.add(msg, ["Snippets"], identifier, options);
+                                                   [snippet.name], 1);
+            var notify = require("notify/notify");
+            notify.send(msg, "autoComplete",
+                {
+                    icon: snippet.iconurl,
+                    undo: function(e) {
+                        ko.commands.doCommand('cmd_focusEditor');
+                        ko.commands.doCommandAsync('cmd_undo', e);
+                    },
+                    actions: [
+                        {
+                            label: lazy.bundle.GetStringFromName("Edit Snippet"),
+                            command: function() {
+                                ko.commands.doCommand("cmd_viewToolbox");
+                                ko.toolbox2.ensureToolVisible(snippet, {select: true});
+                                ko.toolbox2.editProperties_snippet(snippet);
+                            }
+                        },
+                        {
+                            label: lazy.bundle.GetStringFromName("disableAbbreviation"),
+                            command: function() {
+                                snippet.setStringAttribute("auto_abbreviation", "false");
+                            }
+                        }
+                    ]
+                }
+            );
             return true;
         }
         scimoz.currentPos = origPos;

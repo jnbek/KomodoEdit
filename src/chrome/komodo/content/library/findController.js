@@ -254,7 +254,7 @@ FindController.prototype.do_cmd_findAllFunctions = function() {
  * @see nsIController::isCommandEnabled
  */
 FindController.prototype.is_cmd_startIncrementalSearch_enabled = function() {
-    return this._currentView != null;
+    return this._currentView != null && this._currentView.getAttribute("type") == "editor";
 }
 
 /**
@@ -270,7 +270,7 @@ FindController.prototype.do_cmd_startIncrementalSearch = function() {
  * @see nsIController::isCommandEnabled
  */
 FindController.prototype.is_cmd_startIncrementalSearchBackwards_enabled = function() {
-    return this._currentView != null;
+    return this._currentView != null && this._currentView.getAttribute("type") == "editor";
 }
 
 /**
@@ -337,7 +337,7 @@ FindController.prototype._focusHandlerBase = function(e) {
     if ((!this._view) ||
         (!elem) ||
         (elem == this._view.findbar) ||
-        (elem.compareDocumentPosition(this._view.findbar) & Node.DOCUMENT_POSITION_CONTAINS))
+        (this._view.findbar && (elem.compareDocumentPosition(this._view.findbar) & Node.DOCUMENT_POSITION_CONTAINS)))
     {
         // The user clicked on the find bar or something in it; we don't
         // want to do anything here
@@ -348,13 +348,14 @@ FindController.prototype._focusHandlerBase = function(e) {
 
 
 FindController.prototype._startIncrementalSearch = function(backwards) {
-    if (!this._currentView) {
-        _log.error("Couldn't start incremental search with no focused scintilla");
+    if (!this._currentView || this._currentView.getAttribute("type") != "editor") {
+        _log.error("Couldn't start incremental search with no focused scintilla", false);
         return;
     }
     _log.debug("Starting incremental search " + (backwards ? "backwards" : "forwards"));
     this._view = this._currentView;
     var scintilla = this._currentView.scintilla;
+    
     var scimoz = scintilla.scimoz;
     this._view.findbar.controller = this;
     this._view.findbar.notFound = false;
@@ -386,7 +387,6 @@ FindController.prototype._startIncrementalSearch = function(backwards) {
 
     // Clear the highlight now because we're starting a new search
     ko.find.highlightClearAll(this._view.scimoz);
-    ko.statusBar.AddMessage(null, "isearch");
 
     // Apply new find settings
     this._findSvc.options.searchBackward = backwards;
@@ -424,11 +424,6 @@ FindController.prototype._startIncrementalSearch = function(backwards) {
 
 FindController.prototype._stopIncrementalSearch = function(why, highlight) {
     _log.debug("stopping incremental search (" + why + ")");
-    if (why !== null) {
-        ko.statusBar.AddMessage(locals.bundle.formatStringFromName("incrementalSearchStopped",
-                                                             [why], 1),
-                                "isearch", 3000, highlight, true);
-    }
     if (this._incrementalSearchPattern && this._lastResult) {
         // Found something; force add to the MRU.
         ko.mru.add("find-patternMru", this._incrementalSearchPattern, true)
@@ -565,7 +560,6 @@ FindController.prototype.searchAgain = function(isBackwards) {
         this._view.findbar.notFound = true;
     } else {
         this._incrementalSearchStartPos = this._view.scintilla.scimoz.currentPos;
-        ko.statusBar.AddMessage(null, "isearch");
         if (isBackwards) {
             var newPos = Math.max(scimoz.anchor, scimoz.currentPos);
             if (newPos > lastPos) {

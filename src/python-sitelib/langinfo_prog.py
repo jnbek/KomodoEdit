@@ -46,7 +46,6 @@ log = logging.getLogger("langinfo_prog")
 class _PythonCommonLangInfo(LangInfo):
     conforms_to_bases = ["Text"]
     exts = ['.py', '.pyw']
-    default_encoding = "ascii"  #TODO: link to ref defining default encoding
     # http://www.python.org/dev/peps/pep-0263/
     encoding_decl_pattern = re.compile(r"coding[:=]\s*(?P<encoding>[-\w.]+)")
 
@@ -54,12 +53,14 @@ class _PythonCommonLangInfo(LangInfo):
 # LangInfo entry last.
 class PythonLangInfo(_PythonCommonLangInfo):
     name = "Python"
+    default_encoding = "ascii"  #TODO: link to ref defining default encoding
     magic_numbers = [
         (0, "regex", re.compile(r'\A#!.*python(?!3).*$', re.I | re.M))
     ]
 
 class Python3LangInfo(_PythonCommonLangInfo):
     name = "Python3"
+    default_encoding = "utf-8"
     magic_numbers = [
         (0, "regex", re.compile(r'\A#!.*python3.*$', re.I | re.M))
     ]
@@ -185,18 +186,20 @@ class _JSLikeLangInfo(LangInfo):
                           ])
     keywords = common_keywords.union(
                 # Additional JavaScript reserved keywords.
-                set(["abstract", "boolean", "byte",
+                set(["abstract", "arguments",
+                    "boolean", "byte",
                     "char", "class",
                     "double",
-                    "enum", "extends",
-                    "float",
+                    "enum", "extends", "eval",
+                    "float", "final",
                     "goto",
                     "implements", "int", "interface",
                     "long",
                     "native",
                     "package", "private", "protected", "public",
                     "short", "static", "super", "synchronized",
-                    "transient"
+                    "throws", "transient",
+                    "volatile"
                     ]))
 
 class JavaScriptLangInfo(_JSLikeLangInfo):
@@ -209,19 +212,24 @@ class NodeJSLangInfo(_JSLikeLangInfo):
 
 class CoffeeScriptLangInfo(_JSLikeLangInfo):
     name = "CoffeeScript"
-    exts = ['.coffee']
+    exts = ['.coffee', '.litcoffee']
+    filename_patterns = ['Cakefile']
     
-    common_keywords = set().union(_JSLikeLangInfo.common_keywords)
-    try:
-        common_keywords.remove("var")
-    except KeyError:
-        log.exception("Can't remove 'var'")
-    _new_keywords = set(['__bind__indexOf', '__extends', '__hasProp',
-                         '__slice', 'and', 'arguments', 'await', 'by', 'defer',
-                         'enumexport', 'eval', 'is', 'isnt', 'loop', 'no',
-                         'not', 'of', 'onoff', 'or', 'protectedpublic', 'then',
-                         'unless', 'until', 'when', 'yes'])
-    keywords = common_keywords.union(_new_keywords)
+    _inherited_keywords = set().union(_JSLikeLangInfo.keywords)
+    _compiler_reserved_words = set(['__hasProp', '__extends', '__slice', '__bind', '__indexOf'])
+    _new_keywords = set(['and',
+                         'by',
+                         'class', 'constructor',
+                         'is', 'isnt',
+                         'loop',
+                         'no', 'not',
+                         'of', 'off', 'on', 'or', 'own',
+                         'then',
+                         'unless', 'until',
+                         'when',
+                         'yes'])
+    
+    keywords = _inherited_keywords.union(_compiler_reserved_words).union(_new_keywords)
 
 class CLangInfo(LangInfo):
     #TODO: rationalize with C++ and Komodo's usage
@@ -603,4 +611,9 @@ class CamlLangInfo(LangInfo):
     komodo_name = "Objective Caml"
     conforms_to_bases = ["Text"]
     exts = [".ml", ".mli"]
+
+class SwiftScriptLangInfo(LangInfo):
+    """https://developer.apple.com/swift/"""
+    name = "Swift"
+    exts = ['.swift']
 

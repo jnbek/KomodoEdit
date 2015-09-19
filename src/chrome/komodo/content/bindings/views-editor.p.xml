@@ -51,7 +51,7 @@
                        anonid="scintilla"
                        allowIME="true"
                        mozcontext="editorContextMenu"/>
-        <xul:ko-findbar anonid="findbar"/>
+        <xul:ko-findbar class="hud" anonid="findbar"/>
     <!--</xul:vbox>-->
         <!--
     <content orient="vertical" style="border: green solid 1px;" flex="6">
@@ -522,7 +522,8 @@
                 }
 
                 if (pos > 0 && pos < sm.length) {
-                    if (this.lintBuffer && this.lintBuffer.lintResults) {
+                    if (this.lintBuffer && this.lintBuffer.lintResults &&
+                        !this.prefs.getBoolean("lintShowResultsInline")) {
                         var charOffset = pos - sm.positionFromLine(lineNo) + 1;
                         var results = {};
                         var numResults = {};
@@ -1013,10 +1014,9 @@
                 if (isLastDocumentInstance
                     && this.getAttribute('type') == 'editor'
                     && ko.macros.eventHandler.hookPreFileClose(this)) {
-                    ko.statusBar.AddMessage(
-                        this.viewsPropertiesBundle.GetStringFromName(
-			    "macroInterruptedFileClosingProcedure.message"),
-                        "macro", 5000, true);
+                    var msg = this.viewsPropertiesBundle.GetStringFromName(
+                                "macroInterruptedFileClosingProcedure.message");
+                    require("notify/notify").send(msg, "macros");
                     return false;
                 }
                     
@@ -1188,6 +1188,7 @@
 
             window.dispatchEvent(new CustomEvent('file_saved', { bubbles: true, detail: {view: this} }));
             ko.macros.eventHandler.hookPostFileSave(this);
+            require("ko/dom")(window).trigger("folder_touched", {path: this.koDoc.file.dirName});
             return true;
         ]]>
         </body>
@@ -1244,10 +1245,8 @@
         <![CDATA[
             try {
                 if (ko.macros.eventHandler.hookPreFileSave(this)) {
-                    ko.statusBar.AddMessage("Macro interrupted file saving procedure.",
-                                         "macro",
-                                         5000,
-                                         true);
+                    var msg = "Macro interrupted file saving procedure.";
+                    require("notify/notify").send(msg, "macros", {priority: "warning"});
                     return false;
                 }
 
@@ -1437,9 +1436,7 @@
             // remove the filename from the invocation prefs
             if (docNew.prefs.hasPrefHere("Invocations")) {
                 var root = docNew.prefs.getPref("Invocations");
-                var ids = {};
-                root.getPrefIds(ids, {});
-                ids = ids.value;
+                var ids = root.getPrefIds();
                 for (var i=0; i < ids.length; i++) {
                     var storedPrefs = root.getPref(ids[i]);
                     if (docOld.file &&
@@ -1772,7 +1769,12 @@
         <parameter name="type"/>
         <body>
         <![CDATA[
-            this.scimoz.markerAdd(line, type);
+        
+            let scimoz = this.scimoz;
+            // Check if the marker already exists - bug 104553.
+            if ((scimoz.markerGet(line) & (1 << type)) == 0) {
+               scimoz.markerAdd(line, type);
+            }
         ]]>
         </body>
         </method>
@@ -1957,10 +1959,8 @@
             // Default to the view's own document.
             previewURI = this.koDoc.file.URI;
         }
-        var doc;
-        if (previewURI == this.koDoc.file.URI) {
-            doc = this.koDoc;
-        } else {
+        var doc = this.koDoc;
+        if (!doc.file || previewURI != doc.file.URI) {
             doc = this.docSvc.createDocumentFromURI(previewURI);
         }
         this.preview = viewlist.createViewFromDocument(doc, 'browser', -1);
@@ -2167,16 +2167,6 @@
                             );
             if (ignoreKey) {
                 return;
-            }
-            // On all platforms, verify that we're gathering carets.  If we are,
-            // add another range or caret.  But we can't start a session 
-            // just by clicking.
-
-	    let multiCaretSession = ko.selections.getMultiCaretSession(this);
-            let scimoz = this.scimoz;
-            if (multiCaretSession.isGatheringCarets) {
-                multiCaretSession.addRange(scimoz.selectionStart,
-                                           scimoz.selectionEnd);
             }
         ]]>
         </handler>

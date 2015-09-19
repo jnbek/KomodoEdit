@@ -59,24 +59,24 @@
                     <xul:column/>
                 </xul:columns>
                 <xul:rows>
-                    <xul:row flex="1">
+                    <xul:row anonid="scimoz_row" flex="1">
                         <html:embed type="application/x-scimoz-plugin"
                                     anonid="scimoz"
                                     style="-moz-box-flex: 1;"
                                     pluginAllowsFocusEvents="false"
                                     pluginHandlesDomEvents="false"
                                     />
-                        <xul:scrollbar orient="vertical" anonid="scrollbar_v"
-                                       can-scroll="false"/>
+                        <xul:scrollbar orient="vertical" anonid="scrollbar_v" 
+                                       can-scroll="false" for="scintilla"/>
                     </xul:row>
                     <xul:row>
                         <xul:scrollbar orient="horizontal" anonid="scrollbar_h"
-                                       can-scroll="false"/>
+                                       can-scroll="false" for="scintilla"/>
                         <xul:spacer/>
                     </xul:row>
                 </xul:rows>
             </xul:grid>
-            <xul:panel anonid="autocompletepopup" noautofocus="true">
+            <xul:panel anonid="autocompletepopup" class="hud" noautofocus="true">
                 <xul:hbox>
                     <xul:grid/>
                     <xul:scrollbar orient="vertical"/>
@@ -145,32 +145,11 @@
                                             "anonid", "scrollbar_v"),
                     onUpdateUI: (function(updated, horizScrollPageIncrement) {
                         const ISciMoz = Components.interfaces.ISciMoz;
-                        const scimoz = this.scimoz;
                         if (updated & ISciMoz.SC_UPDATE_H_SCROLL) {
-                            let scrollbar = this._scrollEventHandler.horizontal;
-                            if (!scrollbar.suppress) {
-                                scrollbar.setAttribute("curpos", scimoz.xOffset);
-                                scrollbar.setAttribute("pageincrement", horizScrollPageIncrement);
-                                scrollbar.setAttribute("maxpos", scimoz.scrollWidth - horizScrollPageIncrement);
-                                scrollbar.setAttribute("can-scroll",
-                                                       scimoz.scrollWidth > horizScrollPageIncrement);
-                            }
+                            this.updateScrollbarH(horizScrollPageIncrement);
                         }
                         if (updated & ISciMoz.SC_UPDATE_V_SCROLL) {
-                            let scrollbar = this._scrollEventHandler.vertical;
-                            let lastDocLine = scimoz.lineCount - 1;
-                            if (!scrollbar.suppress) {
-                                scrollbar.setAttribute("curpos", scimoz.firstVisibleLine);
-                                scrollbar.setAttribute("pageincrement", scimoz.linesOnScreen);
-                                let maxVisibleLine = scimoz.visibleFromDocLine(lastDocLine) +
-                                                     scimoz.wrapCount(lastDocLine);
-                                scrollbar.setAttribute("maxpos",
-                                                       maxVisibleLine -
-                                                            scimoz.linesOnScreen);
-                                scrollbar.setAttribute("can-scroll",
-                                                       maxVisibleLine >
-                                                            scimoz.linesOnScreen);
-                            }
+                            this.updateScrollbarV();
                         }
                     }).bind(this),
                     QueryInterface:
@@ -193,6 +172,83 @@
             <field name='needToStopAltPropagation'>false</field>
             <field name='_dragScrollHits'>1</field>
 <!-- #endif -->
+
+            <!--Virtual Scrollbars-->
+            <method name="updateScrollbarH">
+            <parameter name="horizScrollPageIncrement"/>
+            <body>
+            <![CDATA[
+                horizScrollPageIncrement = horizScrollPageIncrement || this.boxObject.width;
+                
+                const scimoz = this.scimoz;
+                
+                let scrollbar = this._scrollEventHandler.horizontal;
+                if (!scrollbar.suppress) {
+                    scrollbar.setAttribute("curpos", scimoz.xOffset);
+                    scrollbar.setAttribute("pageincrement", horizScrollPageIncrement);
+                    scrollbar.setAttribute("maxpos", scimoz.scrollWidth - horizScrollPageIncrement);
+                    scrollbar.setAttribute("can-scroll", scimoz.wrapMode ? false :
+                                                         scimoz.scrollWidth > horizScrollPageIncrement);
+                }
+                
+                // Scintilla isn't sized properly on first load, attempt to redetect size on a timeout
+                // Using document readyState & DOMContentLoaded does not work here
+                if (horizScrollPageIncrement == this.boxObject.width) {
+                    setTimeout(function() {
+                        horizScrollPageIncrement = this.boxObject.width;
+                        scrollbar.setAttribute("pageincrement", horizScrollPageIncrement);
+                        scrollbar.setAttribute("maxpos", scimoz.scrollWidth - horizScrollPageIncrement);
+                        scrollbar.setAttribute("can-scroll", scimoz.wrapMode ? false :
+                                                             scimoz.scrollWidth > horizScrollPageIncrement);
+                    }.bind(this), 100);
+                }
+                
+                var wrapped = this.getAttribute("wrapped");
+                var wrap = this.scimoz.wrapMode !== 0 ? "true" : "false";
+                if (wrapped != wrap) {
+                    this.setAttribute("wrapped", wrap);
+                }
+            ]]>
+            </body>
+            </method>
+            
+            <method name="updateScrollbarV">
+            <body>
+            <![CDATA[
+                var scrollbar = this._scrollEventHandler.vertical;
+                if (scrollbar.suppress) {
+                    return;
+                }
+
+                const scimoz = this.scimoz;
+                var lineCount = scimoz.lineCount;
+                var firstVisibleLine = scimoz.firstVisibleLine;
+                if (lineCount < firstVisibleLine) {
+                    return;
+                }
+
+                // Update the xul scrollbar attributes.
+
+                // When not called through the mutation observer (i.e. supress
+                // is true), then the mutation observer must supress the next
+                // event it receives, otherwise the scrollbar will jump
+                // needlessly - bug 106383.
+                if (!scrollbar.suppress) {
+                    scrollbar.suppressNext = true;
+                }
+
+                var linesOnScreen = scimoz.linesOnScreen;
+                var visLineCount = scimoz.visibleFromDocLine(lineCount);
+                scrollbar.setAttribute("curpos", firstVisibleLine);
+                scrollbar.setAttribute("pageincrement", linesOnScreen);
+                                     
+                var canScroll = linesOnScreen < visLineCount;
+                var maxpos = visLineCount - linesOnScreen;
+                scrollbar.setAttribute("maxpos", maxpos < 0 ? 0 : maxpos);
+                scrollbar.setAttribute("can-scroll", canScroll);
+            ]]>
+            </body>
+            </method>
 
             <!--nsIObserver implementation-->
             <method name="observe">
@@ -222,7 +278,7 @@
                     case 'scheme-changed':
                         // dump("applying scheme\n");
                         if (this.inited) {
-                            this.scheme.applyScheme(this.scimoz, this.language, this.encoding, this.alternateFaceType);
+                            this.applyColorScheme();
                         }
                         break;
                     case 'scrollEndAtLastLine': // pref notification
@@ -431,6 +487,7 @@
                         !!val === !!this._customScrollbarObservers) {
                         return; // no change
                     }
+                    this.setAttribute("virtualScrollbars", (!! val) ? "true" : "false");
                     if (val) {
                         let ob = {};
                         this.scimoz.hookEvents(this._scrollEventHandler,
@@ -452,6 +509,11 @@
                         ob.horizontal.observe(this._scrollEventHandler.horizontal,
                                               {attributes: true, attributeFilter: ["curpos"]});
                         ob.vertical = new MutationObserver(mutations => {
+                            // Check if it needs to supress this mutation event.
+                            if (this._scrollEventHandler.vertical.suppressNext) {
+                                this._scrollEventHandler.vertical.suppressNext = false;
+                                return;
+                            }
                             this._scrollEventHandler.vertical.suppress = true;
                             try {
                                 this.scimoz.firstVisibleLine =
@@ -467,6 +529,9 @@
                                             {attributes: true, attributeFilter: ["curpos"]});
                         this.scimoz.useCustomScrollBars = true;
                         this._customScrollbarObservers = ob;
+                        
+                        this.updateScrollbarH();
+                        this.updateScrollbarV();
                     } else {
                         this.scimoz.unhookEvents(this._scrollEventHandler);
                         this.scimoz.useCustomScrollBars = false;
@@ -515,6 +580,22 @@
                 // control, you can do all this yourself!
                 var scimoz = this.scimoz;
                 try {
+
+/* #if PLATFORM == "darwin" */
+/**
+ * Hack for Mac OS X - when scintilla widgets are shown on the Mac, they
+ * sometimes flash (appear, disappear and then reappear) when they are first
+ * loaded. To workaround the flash, we start with the scintilla widget hidden,
+ * then it's made visible through a short setTimeout, so it looks as though the
+ * text is loaded smoothly (albeit with a very small delay).
+ */ 
+                    var scimoz_row = document.getAnonymousElementByAttribute(this, "anonid", "scimoz_row");
+                    scimoz_row.setAttribute("collapsed", "true");
+                    setTimeout(function() {
+                        scimoz_row.removeAttribute("collapsed");
+                    }, 10);
+/* #endif */
+
                     var controller = Cc['@ActiveState.com/scintilla/controller;1'].
                         createInstance(Ci.ISciMozController);
                     controller.init( scimoz );
@@ -558,24 +639,7 @@
                 if (this._mozcontext || this.getAttribute('context')) {
                     scimoz.usePopUp(0);
                 }
-
-                // mouseDownCaptures must be true, otherwise, when
-                // selecting text with the mouse, if you go outside
-                // the scimoz plugin and release the mouse button,
-                // scintilla will not know and continue to track the
-                // mouse position as if you had not released the mouse
-                // button.
-                // XXX unfortunately, this causes other mouse problems,
-                // so we'll keep one bug until we figure it out.
-<!-- #if PLATFORM == "darwin" or PLATFORM == "win" -->
-                scimoz.mouseDownCaptures = 1;
-<!-- #else -->
-                scimoz.mouseDownCaptures = 0;
-<!-- #endif -->
-                scimoz.mouseDwellTime = 500;
-                scimoz.indent = 4;
-                scimoz.tabWidth = 4;
-                scimoz.setProperty('smartCloseTags', '1');
+                
                 scimoz.wrapVisualFlags = prefs.getLongPref("editWordWrapMarker");
                 scimoz.wrapIndentMode = prefs.getLongPref("editWordWrapIndentation");
                 // XXX this allows us to scroll the last line to the top of the
@@ -587,13 +651,6 @@
                 this.scimoz.suppressZoomOnScrollWheel = !this.editEnableMouseZoom;
                 this.enableSmartTabSkipsSoftCharacters = prefs.getBoolean('enableSmartTabSkipsSoftCharacters', true);
 
-<!-- #if PLATFORM == "win" -->
-                scimoz.eOLMode = scimoz.SC_EOL_CRLF;
-<!-- #else -->
-                scimoz.eOLMode = scimoz.SC_EOL_LF;
-<!-- #endif -->
-                scimoz.codePage = 65001;
-
                 const SC_MOD_WANTED = scimoz.SC_MOD_CHANGESTYLE |
                       scimoz.SC_MOD_INSERTTEXT | scimoz.SC_MOD_DELETETEXT |
                       scimoz.SC_MOD_BEFOREDELETE | scimoz.SC_MOD_BEFOREINSERT;
@@ -602,14 +659,14 @@
                 // only ones we care about.
                 scimoz.modEventMask = SC_MOD_WANTED;
 
-                // Don't feel the need to make this a pref yet.
-                scimoz.setXCaretPolicy(scimoz.CARET_SLOP, 75);
-
                 // Setup margins and markers.
 
                 // Symbol margin.
+                // Note: We have to call setup even if the margin is not
+                //       visible, as some markers don't rely on the margin
+                //       itself - bug 105933.
+                ko.markers.setup(scimoz, this.scheme.isDarkBackground);
                 if (this.symbolMargin) {
-                    ko.markers.setup(scimoz, this.scheme.isDarkBackground);
                     scimoz.setMarginWidthN(scimoz.MARGIN_SYMBOLS, 16);
                 } else {
                     scimoz.setMarginWidthN(scimoz.MARGIN_SYMBOLS, 0);
@@ -634,20 +691,10 @@
                 scimoz.setMarginMaskN(scimoz.MARGIN_FOLDING, scimoz.SC_MASK_FOLDERS);
                 scimoz.setMarginSensitiveN(scimoz.MARGIN_FOLDING, 1);
 
-                // Allow column editing through Scintilla.
-                scimoz.multipleSelection = false;
-                scimoz.additionalSelectionTyping = true;
-                // This allows a rectangular selection to extend past the
-                // end of the line when there is a longer selected line.
-                scimoz.virtualSpaceOptions = scimoz.SCVS_RECTANGULARSELECTION;
-                // This allows Scintilla to perform indenting/dedenting when
-                // there is a rectangular selection.
-                scimoz.tabIndents = true;
-
                 // Setup custom scroll bars.
-                this.useCustomScrollBars = prefs.getBoolean('koSkin_use_custom_scrollbars', false);
                 scimoz.hScrollBar = this.hScrollBar;
                 scimoz.vScrollBar = this.vScrollBar;
+                this.useCustomScrollBars = prefs.getBoolean('koSkin_use_custom_scrollbars', false);
 
                 this.applyColorScheme();
 
@@ -656,6 +703,13 @@
                                                                this.pref_topics.length,
                                                                this.pref_topics,
                                                                false);
+
+                // Check if the view's scintilla widget requires the plugin paint hack.
+                let view = document.getBindingParent(this);
+                if (view.localName == "view" && view.scintilla.hasAttribute("pluginPaintHack")) {
+                    this.scimoz.enablePluginVisibilityHack();
+                }
+
                 scimoz.visible = true;
             } catch (e) {
                 this.log.exception(e);
@@ -704,6 +758,20 @@
                 // Set a fallback background color for the plugin, to avoid
                 // flashes of color when closing tabs - bug 97061.
                 this._embed.style.backgroundColor = this.scheme.backgroundColor;
+
+                // Set isDark attribute, for use in CSS
+                var self = this;
+                var setIsDark = function() {
+                    var isDark = require("ko/color").isDark(self.scheme.backgroundColor);
+                    self.setAttribute("isDark", isDark);
+                }
+                if ("require" in window)
+                    setIsDark();
+                else
+                {
+                    self.setAttribute("isDark", false);
+                    window.addEventListener("komodo-post-startup", setIsDark.bind(this));
+                }
 
                 // Provide background color on wrapper so scrollbars can use
                 // transparency
@@ -1005,6 +1073,12 @@
             <handler event="focus" phase="capturing">
                 <![CDATA[
                 //dump("scintilla:: focus\n");
+
+                // Always ensure scimoz is marked as focused, even if the real
+                // focused element is a child element of scintilla xbl.
+                var scimoz = this.scimoz;
+                scimoz.isFocused = true;
+
                 var focusedElement = window.document.commandDispatcher.focusedElement;
                 if ([null, this, this._embed, this._ime].indexOf(focusedElement) == -1) {
                     // something else inside <scintilla>; ignore focus on that.
@@ -1012,12 +1086,10 @@
                     //               " (state=" + this.scimoz.isFocused + ")");
                     return;
                 }
-                var scimoz = this.scimoz;
                 if (!this.suppressSoftCharHardeningOnFocus) {
                     scimoz.indicatorCurrent = this.DECORATOR_SOFT_CHAR;
                     scimoz.indicatorClearRange(0, scimoz.textLength);
                 }
-                scimoz.isFocused = true;
                 // Ensure the command dispatcher is referencing the scintilla
                 // element, not the plugin element. Otherwise commands will not
                 // work correctly.
@@ -1188,7 +1260,8 @@
                     case event.DOM_VK_RETURN:
                         break;
                     case event.DOM_VK_TAB:
-                        if (!ko.tabstops.textHasTabstops(scimoz.text)
+                        if ((!("tabstops" in ko)
+                                || !ko.tabstops.textHasTabstops(scimoz.text))
                             && (scimoz.selectionIsRectangle
                                 || scimoz.multipleSelection))
                         {
@@ -1234,6 +1307,8 @@
                             event.preventDefault();
                             event.cancelBubble = true;
                             return;
+                        } else if (scimoz.selections > 1) {
+                            scimoz.cancel(); // cancel multiple selections
                         } else if (view) {
                             if (ko.tabstops) {
                                 ko.tabstops.clearTabstopInfo(view);
@@ -1822,9 +1897,6 @@
             </handler>
 
         </handlers>
-        <resources>
-            <stylesheet src="chrome://komodo/skin/codeintel/autocomplete-popup.css"/>
-        </resources>
     </binding>
 
 </bindings>

@@ -68,7 +68,7 @@ var koLess = function koLess()
                 return;
             }
 
-            initialising = true;
+            this.initialising = true;
             self = this;
             log = logging.getLogger('koLess');
             //log.setLevel(10); // debug
@@ -172,10 +172,13 @@ var koLess = function koLess()
          *                                          internally or from the compiler
          * @param   {Boolean}       async           Whether to execute this call
          *                                          asynchronously
+         * @param   {Boolean}       cache           Whether to allow caching,
+         *                                          if caching is disabled the callback
+         *                                          will return the parsed sheet
          *
          * @returns {Void}
          */
-        loadSheet: function koLess_loadSheet(sheet, callback = function() {}, isInternalCall = false, async = false)
+        loadSheet: function koLess_loadSheet(sheet, callback = function() {}, isInternalCall = false, async = false, cache = true)
         {
             var threadId = this._loadSheetNo++;
             
@@ -190,6 +193,7 @@ var koLess = function koLess()
                 this.debug(threadId + " Loading: " + sheet.href);
 
                 // Check if we can load the sheet via the file cache
+                var youngest;
                 var cacheFile = this.cache.getFile(sheet.href);
                 if (cacheFile && cacheFile.exists())
                 {
@@ -269,41 +273,91 @@ var koLess = function koLess()
                         // Perfect time to cache the sheet hierarchy
                         this.cache.writeFile('hierarchy.json', JSON.stringify(this.hierarchy));
                     }
-                };
+                }.bind(this);
                
                 // Run it through the LESS parser
-                try
-                {
-                    var contents = {};
-                    contents[sheet.href] = data;
-
-                    if (sheet instanceof less.tree.parseEnv)
-                    {
-                        var env = new less.tree.parseEnv(sheet);
-                    }
-                    else
-                    {
-                        var env = new less.tree.parseEnv(less);
-                        env.mime = sheet.type;
-                        env.sheet = sheet;
-                    }
-
-                    env.paths = [sheet.href.replace(/[^/]*$/, '')];
-                    env.contents = contents;
-                    env.dumpLineNumbers = false;
-                    env.strictImports = false;
-                    env.currentFileInfo = {
-                        filename: sheet.href
-                    };
-
-                    new(less.Parser)(env).parse(data, _parseCallback.bind(this));
-                }
-                catch (e)
-                {
-                    this.exception(e, threadId + ' Parsing error for ' + sheet.href + ': ' + e.message);
-                    callback();
-                }
+                this.parse(data, _parseCallback, sheet, false);
             }.bind(this), async);
+        },
+
+        /**
+         * Parse given CSS/LESS into pure CSS
+         *
+         * @param   {string} data
+         * @param   {function} callback
+         * @param   {object|undefined} sheet
+         *
+         * @returns {void}
+         */
+        parse: function(data, callback, sheet = undefined, isVirtual = true)
+        {
+            if ( ! sheet)
+            {
+                sheet = {
+                    href: "file://virtual.less",
+                    mime: "text/less"
+                }
+            }
+
+            try
+            {
+                var contents = {};
+                contents[sheet.href] = data;
+
+                if (sheet instanceof less.tree.parseEnv)
+                {
+                    var env = new less.tree.parseEnv(sheet);
+                }
+                else
+                {
+                    var env = new less.tree.parseEnv(less);
+                    env.mime = sheet.type;
+                    env.sheet = sheet;
+                }
+
+                env.paths = [sheet.href.replace(/[^/]*$/, '')];
+                env.contents = contents;
+                env.dumpLineNumbers = false;
+                env.strictImports = false;
+                env.currentFileInfo = {
+                    filename: sheet.href
+                };
+
+                new(less.Parser)(env).parse(data, function(e, root)
+                {
+                    if ( ! isVirtual) return callback(e, root);
+
+                    try
+                    {
+                        var parsedCss = root.toCSS();
+                    }
+                    catch (ex)
+                    {
+                        if ("extract" in ex)
+                        {
+                            e = ex;
+                        }
+                        else
+                        {
+                            this.exception(e, 'Error converting less to css in ' + sheet.href);
+                        }
+                    }
+
+                    // Validate parsed result
+                    if (e)
+                    {
+                        this.errorLess(e, sheet.href);
+                    }
+
+                    callback(parsedCss);
+                }.bind(this));
+            }
+            catch (e)
+            {
+                this.exception(e, ' Parsing error for ' + sheet.href + ': ' + e.message);
+
+                if ( ! isVirtual) callback(e);
+            }
         },
 
         /**
@@ -720,7 +774,7 @@ var koLess = function koLess()
                 }
             }
 
-            //this.debug('Youngest child for "' + href + '" is "' + youngest.href + '"');
+            this.debug('Youngest child for "' + href + '" is "' + youngest.href + '"');
 
             this.localCache.resolveYoungestChild[href] = youngest;
             return youngest;
@@ -797,7 +851,7 @@ var koLess = function koLess()
          *
          * @returns {Void}
          */
-        errorLess: function koLess_errorLess(e, href, threadId) {
+        errorLess: function koLess_errorLess(e, href, threadId = "") {
             var error = [];
 
             var errorString = (

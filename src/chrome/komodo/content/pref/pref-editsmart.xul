@@ -48,7 +48,7 @@
 
 <window xmlns:html="http://www.w3.org/1999/xhtml"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        class="kodialog"
+        class="kodialog pref-window"
         orient="vertical"
         onload="editsmart_OnLoad();">
 
@@ -81,6 +81,7 @@
             widgets.autoAbbreviationTriggerCharacters = document.getElementById("autoAbbreviationTriggerCharacters");
             widgets.autoAbbreviationTriggerCharacters_FactorySetting = prefset.getStringPref("autoAbbreviationTriggerCharacters_FactorySetting");
             widgets.restoreAutoAbbreviationTriggerCharacters = document.getElementById("restoreAutoAbbreviationTriggerCharacters");
+            widgets.enableAutoAbbreviations = document.getElementById("enableAutoAbbreviations");
             check_trigger_characters_changed();
         } catch (ex) {
             // Ignore any errors.
@@ -152,6 +153,7 @@
 
     function check_trigger_characters_changed() {
         widgets.restoreAutoAbbreviationTriggerCharacters.disabled = widgets.autoAbbreviationTriggerCharacters_FactorySetting == widgets.autoAbbreviationTriggerCharacters.value;
+        pref_autoAbbreviations_doEnabling(widgets.enableAutoAbbreviations);
     }
 
     ]]>
@@ -165,7 +167,8 @@
             <caption label="&smartEditing.label;"/>
             <checkbox id="editTabCompletes"
                       label="&useTabCharacterToCompleteWordsLikeCtrlSpace.label;"
-                      pref="true"/>
+                      pref="true"
+                      class="advanced"/>
             <hbox align="center">
                 <label value="&fileEditSmartWrapLines.label;"/>
                 <menulist pref="true"
@@ -184,7 +187,7 @@
                  They're used in koDocSettingsManager.py as well, but those
                  will bubble up from doc prefs to global prefs
               -->
-            <vbox id="wordwrap_settings_vbox" class="load-context-check" showIfLoadContext="global">
+            <vbox id="wordwrap_settings_vbox" class="load-context-check advanced" showIfLoadContext="global">
                 <hbox id="wordwrap_markers_hbox"
                       align="center"
                       style="margin-left: 27px;">
@@ -256,11 +259,11 @@
             <checkbox id="enableSmartSoftCharactersInsideLine"
                       style="margin-left: 27px;"
                       label="&enableSmartSoftCharactersInsideLine.label;"
-                      pref="true"/>
+                      pref="true" class="advanced"/>
             <checkbox id="enableSmartTabSkipsSoftCharacters"
                       style="margin-left: 27px;"
                       label="&enableSmartTabSkipsSoftCharacters.label;"
-                      pref="true"/>
+                      pref="true" class="advanced"/>
     
             <separator class="thin"/>
             <checkbox id="editSmartCutCopyWithoutSelection"
@@ -269,10 +272,11 @@
                       prefattribute="checked"/>
             </vbox>
             <!-- Show repositionCaretAfterTab in global and doc prefs -->
-            <separator class="thin"/>
+            <separator class="thin advanced"/>
             <checkbox id="repositionCaretAfterTab"
                       label="&repositionCaretAfterTab.label;" pref="true"
                       tooltiptext="&repositionCaretAfterTab.tooltiptext;"
+                      class="advanced"
                       />
         </groupbox>
     
@@ -328,10 +332,10 @@
               </menulist>
             </hbox>
             <checkbox id="editFoldLines" label="&useHorizontalLineOnFolds.label;" pref="true"
-                      prefstring="editFoldLines" prefattribute="checked"/>
+                      prefstring="editFoldLines" prefattribute="checked" class="advanced"/>
             <checkbox id="foldSeparateBlockParts" label="&foldSeparateBlockParts.label;" pref="true"
                       prefstring="foldSeparateBlockParts" prefattribute="checked"
-                      tooltiptext="&foldSeparateBlockParts.tooltiptext;" />
+                      tooltiptext="&foldSeparateBlockParts.tooltiptext;" class="advanced" />
             <checkbox id="editRestoreFoldPoints" label="&restoreFoldStateOnDocumentLoadSlowsDownFileOpening.label;" pref="true"
                       prefstring="editRestoreFoldPoints" prefattribute="checked"/>
         </groupbox>
@@ -347,7 +351,7 @@
             <checkbox label="&highlightVariableMatchPrefix.label;" pref="true"
                       class="indentedPref01" preftype="boolean"
                       prefstring="codeintel_highlight_variables_match_prefix"/>
-            <hbox class="indentedPref01 textboxWrapper">
+            <hbox class="indentedPref01 textboxWrapper advanced">
                 <label value="&highlightVariableKeyboardDelay.label;"
                        control="editVariableHighlightAutoDelay"/>
                 <textbox pref="true" size="3" id="editVariableHighlightAutoDelay"

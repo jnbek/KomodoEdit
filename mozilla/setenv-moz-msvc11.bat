@@ -34,8 +34,9 @@ rem append moztools to PATH
 SET PATH=%PATH%;%MOZ_TOOLS%\bin
 
 rem Other PATH additions.
-rem - not sure make 3.81 is necessary but probably is
 rem - msys\local\bin to get iconv.exe
+set PATH=%MOZILLABUILD%\mozmake;%PATH%
+rem - make 3.81 is fallback, in case mozmake isn't around
 set PATH=%MOZILLABUILD%\make-3.81\bin;%PATH%
 set PATH=%MOZILLABUILD%\msys\local\bin;%PATH%
 set PATH=%MOZILLABUILD%\info-zip;%PATH%
@@ -48,7 +49,7 @@ set PATH=%PATH%;%MOZILLABUILD%\nsis-2.46u
 set PATH=%PATH%;%MOZILLABUILD%\nsis-2.33u
 rem Add hg - in case the user doesn't have it on their path.
 set PATH=%PATH%;%MOZILLABUILD%\hg
-
+set PATH=%PATH%;%~dp0\..\util\black
 
 if "%VC11DIR%"=="" (
     if "%VC11EXPRESSDIR%"=="" (
@@ -116,12 +117,5 @@ if "%USESDK%"=="1" (
 rem Force the first directory on the path to be our own custom bin directory,
 rem so the build will find and use our own patch.exe.
 set "PATH=%~dp0\bin-win32;%PATH%"
-
-rem Force WinXP compatibility - bug 99164.
-set INCLUDE=%ProgramFiles(x86)%\Microsoft SDKs\Windows\7.1A\Include;%INCLUDE%
-set PATH=%ProgramFiles(x86)%\Microsoft SDKs\Windows\7.1A\Bin;%PATH%
-set LIB=%ProgramFiles(x86)%\Microsoft SDKs\Windows\7.1A\Lib;%LIB%
-set CL=/D_USING_V110_SDK71_;%CL%
-set LINK=/SUBSYSTEM:CONSOLE,5.01
 
 echo ========================== done ==================================

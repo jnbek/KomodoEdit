@@ -95,7 +95,7 @@
                     <hbox style="width: 22px;">
                         <vbox>
                             <spring flex="1"/>
-                            <image src="chrome://komodo/skin/images/snippet.png"
+                            <image src="chrome://komodo/skin/images/toolbox/snippet.svg"
                                    style="max-width: 22px; max-height:16px"
                                    id="snippettab_icon"/>
                             <spring flex="1"/>
@@ -125,7 +125,9 @@
                           onmousedown="scintillaFocus()"
                           onkeyup="updateOK()"
                           onblur="scintillaBlur()"
-                          onfocus="scintillaFocus()"/>
+                          onfocus="scintillaFocus()"
+                          pluginPaintHack="true"
+                          />
                     <vbox>
                     <button type="menu" id="shortcuts-menubutton"
                             tooltiptext="&shortcuts.tooltiptext;" tooltip="dialogTooltip"
@@ -153,6 +155,9 @@
                                       oncommand="InsertShortcut(this);"/>
                             <menuitem label="&bFileBaseNameWithoutExtension.label;"
                                       shortcut="[[%b]]"
+                                      oncommand="InsertShortcut(this);"/>
+                            <menuitem label="&projectBaseDirectory.label;"
+                                      shortcut="[[%i]]"
                                       oncommand="InsertShortcut(this);"/>
                             <menuitem label="&PPathOfTheActiveProject.label;"
                                       shortcut="[[%P]]"
@@ -218,7 +223,7 @@
                     <hbox style="width: 22px;">
                         <vbox>
                             <spring flex="1"/>
-                            <image src="chrome://komodo/skin/images/snippet.png"
+                            <image src="chrome://komodo/skin/images/toolbox/snippet.svg"
                                    style="max-width: 22px; max-height:16px"
                                    id="keybindingtab_icon"/>
                             <spring flex="1"/>

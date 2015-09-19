@@ -1,8 +1,16 @@
 /* Variables & Helpers */
 @import url("chrome://komodo/skin/_config/window.less");
 @import url("chrome://komodo/skin/_config/panes.less");
+@import url("chrome://komodo/skin/_config/toolbars.less");
 
 /* Widgets & Panes */
+
+#komodo_main:not(.toolbox-hidden) ko-pane:not(#workspace_bottom_area)
+{
+    /* Set the border exclusively on the pane, as setting it on the toolbox
+       creates an awkward fuzzy effect when using dark color shchemes */
+    border-top: @main-toolbox-border-bottom !important;
+}
 
 page.widget,
 page.widget .toolbar-background
@@ -19,14 +27,15 @@ ko-pane tabpanels
     margin: 0px;
 }
 
-.widget_splitter
+.widget_splitter,
+#placesSubpanelSplitter
 {
     -moz-appearance: none;
     background-image: none;
     background: transparent;
     border: 0;
 
-    &[orient="vertical"] // This splitter is in a vertical pane
+    &[orient="vertical"], // This splitter is in a vertical pane
     {
         margin-top: 3px;
         margin-bottom: 3px;
@@ -38,6 +47,7 @@ ko-pane tabpanels
             -moz-box-orient: horizontal;
             height: 1px;
             background: @widget-splitter-background;
+            margin: 0 10px;
         }
     }
 
@@ -54,7 +64,7 @@ ko-pane tabpanels
             -moz-box-orient: vertical;
             width: 2px;
             padding-left: 2px;
-            border-left: @panel-border;
+            border-left: @main-border;
         }
     }
 
@@ -147,7 +157,7 @@ ko-pane .pane-empty-container description
 ko-pane:not([ko-pane-drag-status]) .pane-drop-placeholders > :not(splitter)
 {
     background-color: @pane-customize-draggable-background-color;
-    background-image: url("chrome://icomoon/skin/icons/move.png");
+    background-image: url("koicon://ko-svg/chrome/icomoon/skin/move.svg");
     background-position: center;
     background-repeat: no-repeat;
     border: @pane-customize-draggable-border;
@@ -161,7 +171,7 @@ ko-pane:not([ko-pane-drag-status]) .pane-drop-placeholders > :not(splitter):hove
 /* Drop Area */
 ko-pane[ko-pane-drag-status] .pane-drop-placeholders {
   background-color: @pane-customize-droppable-background-color;
-  background-image: url("chrome://icomoon/skin/icons/download3.png");
+  background-image: url("koicon://ko-svg/chrome/icomoon/skin/download3.svg");
   background-position: center;
   background-repeat: no-repeat;
   border: @pane-customize-droppable-border;

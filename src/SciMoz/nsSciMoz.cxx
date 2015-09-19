@@ -95,6 +95,11 @@ NS_IMPL_ISUPPORTS_CI(SciMoz,
                      nsISupportsWeakReference)
 #endif
 
+int16_t GenerateScimozId() {
+    static int16_t s_pluginId = 0;
+    return s_pluginId++;
+}
+
 SciMoz::SciMoz(SciMozPluginInstance* aPlugin)
 {
 #ifdef SCIMOZ_DEBUG
@@ -150,10 +155,77 @@ void SciMoz::SciMozInit() {
     bracesSloppy = true;
 
     // There is no cached text to start with.
-    _textHasChanged = true;
+    _scimozId = GenerateScimozId();
+    _textId = 0;
     mLastLineCount = 1;
+	mPluginVisibilityHack = false;
 
     PlatformNew();
+}
+
+// Default settings for Komodo scintilla widgets.
+void SciMoz::DefaultSettings() {
+    SendEditor(SCI_SETLEXER, SCLEX_CPP);
+    SendEditor(SCI_STYLECLEARALL);    // Copies global style to all others
+
+    // UTF-8 always.
+    SendEditor(SCI_SETCODEPAGE, SC_CP_UTF8);
+
+    // We set mouseDownCaptures to true, otherwise, when selecting text with the
+    // mouse, if you go outside the scimoz plugin and release the mouse button,
+    // scintilla will not know and continue to track the mouse position as if
+    // you had not released the mouse button.
+#if defined(XP_MACOSX) || defined(_WINDOWS)
+    SendEditor(SCI_SETMOUSEDOWNCAPTURES, 1);
+#else
+    SendEditor(SCI_SETMOUSEDOWNCAPTURES, 0);
+#endif
+    SendEditor(SCI_SETMOUSEDWELLTIME, 500);
+
+    // Indentation.
+    SendEditor(SCI_SETINDENT, 4);
+    SendEditor(SCI_SETTABWIDTH, 4);
+    // Enable multiple caret editing.
+    SendEditor(SCI_SETMULTIPLESELECTION, 1);
+    SendEditor(SCI_SETADDITIONALSELECTIONTYPING, 1);
+    SendEditor(SCI_SETMULTIPASTE, SC_MULTIPASTE_EACH);
+#if !(defined(XP_MACOSX) || defined(_WINDOWS))
+    // On Windows and Mac OSX, Alt+Mouse creates rectangular
+    // selections. On Linux, Alt+Mouse is usually handled by the
+    // window manager and moves windows. Thus Scintilla uses
+    // Ctrl+Mouse for creating rectangular selections on Linux.
+    // However, this prevents creating multiple selections with
+    // Ctrl+Click (which is used on Windows and Mac OSX). We want
+    // Ctrl+Click to create multiple selections on all platforms, so
+    // redefine the modifier for rectangular selection creation.
+    SendEditor(SCI_SETRECTANGULARSELECTIONMODIFIER, SCMOD_SUPER);
+#endif
+    // This allows a rectangular selection to extend past the
+    // end of the line when there is a longer selected line.
+    SendEditor(SCI_SETVIRTUALSPACEOPTIONS, SCVS_RECTANGULARSELECTION);
+    // This allows Scintilla to perform indenting/dedenting when
+    // there is a rectangular selection.
+    SendEditor(SCI_SETTABINDENTS, 1);
+
+#if defined(_WINDOWS)
+    SendEditor(SCI_SETEOLMODE, SC_EOL_CRLF);
+#else
+    SendEditor(SCI_SETEOLMODE, SC_EOL_LF);
+#endif
+
+    // Annotation style, primarly for displaying inline lint results.
+    SendEditor(SCI_ANNOTATIONSETVISIBLE, ANNOTATION_INDENTED);
+
+    // Caret slop controls.
+    SendEditor(SCI_SETXCARETPOLICY, CARET_SLOP, 75);
+
+    SendEditor(SCI_SETPROPERTY, (unsigned long) "smartCloseTags", (long) "1");
+
+    //SendEditor(SCI_SETMULTIPLESELECTION, 0);
+    //SendEditor(SCI_SETMULTIPLESELECTION, 0);
+    //SendEditor(SCI_SETMULTIPLESELECTION, 0);
+    //SendEditor(SCI_SETMULTIPLESELECTION, 0);
+    //SendEditor(SCI_SETMULTIPLESELECTION, 0);
 }
 
 long SciMoz::SendEditor(unsigned int Msg, unsigned long wParam, long lParam) {
@@ -182,9 +254,7 @@ void SciMoz::Create(WinID hWnd) {
 	fprintf(stderr,"SciMoz::Create %lx\n", hWnd);
 #endif
 	PlatformCreate(hWnd);
-	SendEditor(SCI_SETLEXER, SCLEX_CPP);
-	SendEditor(SCI_STYLECLEARALL);	// Copies global style to all others
-	SendEditor(SCI_SETMOUSEDOWNCAPTURES, 0);
+	DefaultSettings();
 }
 
 static bool IsBrace(char ch) {
@@ -310,6 +380,23 @@ bool SciMoz::DoBraceMatch(const NPVariant * /*args*/, uint32_t argCount, NPVaria
 		return false;
 	}
 	BraceMatch();
+	return true;
+}
+
+NS_IMETHODIMP SciMoz::EnablePluginVisibilityHack()
+{
+	SCIMOZ_CHECK_VALID("EnablePluginVisibilityHack");
+	mPluginVisibilityHack = true;
+	return NS_OK;
+}
+bool SciMoz::EnablePluginVisibilityHack(const NPVariant * /*args*/, uint32_t argCount, NPVariant * /*result*/) {
+        SCIMOZ_CHECK_THREAD("EnablePluginVisibilityHack", false)
+        SCIMOZ_CHECK_ALIVE("EnablePluginVisibilityHack", false)
+	if (argCount != 0) {
+		SCIMOZ_DEBUG_PRINTF("%s: expected 0 arguments, got %i\n", __FUNCTION__, argCount);
+		return false;
+	}
+	EnablePluginVisibilityHack();
 	return true;
 }
 
@@ -464,7 +551,9 @@ void SciMoz::Notify(long lParam) {
 			bool isInsertOrDeleteText = notification->modificationType & (SC_MOD_INSERTTEXT | SC_MOD_DELETETEXT);
 			if (isInsertOrDeleteText) {
 				// Buffer has changed, reset the text cache.
-				_textHasChanged = true;
+				if (_textId >= 0x7FFF)
+                    _textId = 0; // Wrap around to start.
+                _textId += 1;
 			}
 
 			// Check if the line count has changed - if so, we'll
@@ -539,14 +628,28 @@ void SciMoz::Notify(long lParam) {
 			}
 			break;
 		case SCN_DWELLSTART:
-			mask = ISciMozEvents::SME_DWELLSTART;
-			while ( nullptr != (handle = listeners.GetNext(mask, handle, getter_AddRefs(eventSink))))
-				eventSink->OnDwellStart(notification->position, notification->x, notification->y);
-			break;
 		case SCN_DWELLEND:
-			mask = ISciMozEvents::SME_DWELLEND;
-			while ( nullptr != (handle = listeners.GetNext(mask, handle, getter_AddRefs(eventSink))))
-				eventSink->OnDwellEnd(notification->position, notification->x, notification->y);
+			{
+				// Convert into Mozilla pixel co-ordinates - bug 100492.
+#ifdef XP_MACOSX
+				const int kDefaultDPI = 72;
+#else
+				const int kDefaultDPI = 96;
+#endif
+				int logPixelsX = SendEditor(SCI_GETLOGPIXELSX, 0, 0);
+				int logPixelsY = SendEditor(SCI_GETLOGPIXELSY, 0, 0);
+				int dwell_x = (notification->x * kDefaultDPI) / logPixelsX;
+				int dwell_y = (notification->y * kDefaultDPI) / logPixelsY;
+				if (notification->nmhdr.code == SCN_DWELLSTART) {
+					mask = ISciMozEvents::SME_DWELLSTART;
+					while ( nullptr != (handle = listeners.GetNext(mask, handle, getter_AddRefs(eventSink))))
+						eventSink->OnDwellStart(notification->position, dwell_x, dwell_y);
+				} else {
+					mask = ISciMozEvents::SME_DWELLEND;
+					while ( nullptr != (handle = listeners.GetNext(mask, handle, getter_AddRefs(eventSink))))
+						eventSink->OnDwellEnd(notification->position, dwell_x, dwell_y);
+				}
+			}
 			break;
 		case SCN_ZOOM:
 			mask = ISciMozEvents::SME_ZOOM;
@@ -1279,18 +1382,29 @@ NS_IMETHODIMP SciMoz::SetModEventMask(PRInt32 mask)
 	SendEditor(SCI_SETMODEVENTMASK, mask, 0);
 
 	// Void the cached text - see bug 85194 for why.
-	_textHasChanged = true;
+    if (_textId >= 0x7FFF)
+        _textId = 0; // Wrap around to start.
+    _textId += 1;
 	return NS_OK;
 }
 
-/* readonly attribute boolean textHasChanged; */
-NS_IMETHODIMP SciMoz::GetTextHasChanged(bool *hasChanged)
+/* readonly attribute long textId; */
+NS_IMETHODIMP SciMoz::GetTextId(int32_t *textId)
 {
-	SCIMOZ_CHECK_VALID("GetTextHasChanged");
+	SCIMOZ_CHECK_VALID("GetTextId");
 #ifdef SCIMOZ_DEBUG_VERBOSE
-	fprintf(stderr,"SciMoz::GetTextHasChanged\n");
+	fprintf(stderr,"SciMoz::GetTextId\n");
 #endif
-	*hasChanged = _textHasChanged;
+    /**
+     * Return a combination of a unique SciMoz id and a rolling text id.
+     * This should give a unique text id (or close enough) for the life of
+     * Komodo.
+     * 
+     * Caveats:
+     *   1) if > 0x7FFF scintilla text changes, the _textId wraps around to 0.
+     *   2) if > 0x7FFF plugins are created - then what the hell are you doing?
+     */
+	*textId = (_scimozId << 16) | _textId;
 	return NS_OK;
 }
 
@@ -1307,7 +1421,6 @@ NS_IMETHODIMP SciMoz::GetText(nsAString &text)
 	fprintf(stderr,"SciMoz::GetText\n");
 #endif
 	GetTextRange(0, -1, text);
-	_textHasChanged = false;
 	return NS_OK;
 }
 

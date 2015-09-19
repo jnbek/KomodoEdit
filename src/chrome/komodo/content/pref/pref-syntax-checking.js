@@ -21,6 +21,7 @@ function docSyntaxCheckingOnLoad() {
         ko.lint.languageSetup = languageSetup;
         ko.lint.languageInfo = languageInfo;
         dialog.lintEOLs = document.getElementById("lintEOLs");
+        dialog.lintShowResultsInline = document.getElementById("lintShowResultsInline");
         dialog.lintClearOnTextChange = document.getElementById("lintClearOnTextChange");
         dialog.lintDelay = document.getElementById("lintDelay");
         dialog.editUseLinting = document.getElementById("editUseLinting");
@@ -93,6 +94,12 @@ function getMappedName(languageName) {
             : null);
 }
 
+function setPanel(langDeck) {
+    dialog.deck.selectedPanel.removeAttribute('active');
+    dialog.deck.selectedPanel = langDeck;
+    dialog.deck.selectedPanel.setAttribute('active', 'true');
+}
+
 function showLanguageNamePanel(languageName) {
     var deckID = null;
     if (languageName) {
@@ -101,7 +108,7 @@ function showLanguageNamePanel(languageName) {
         }
         deckID = document.getElementById("langSyntaxCheck-" + languageName);
         if (deckID) {
-            dialog.deck.selectedPanel = deckID;
+            setPanel(deckID);
         }
     }
     if (deckID === null) {
@@ -109,7 +116,7 @@ function showLanguageNamePanel(languageName) {
         if (mappedName) {
             deckID = document.getElementById("langSyntaxCheck-" + mappedName);
             if (deckID) {
-                dialog.deck.selectedPanel = deckID;
+               setPanel(deckID);
                 return;
             }
         }
@@ -120,7 +127,8 @@ function showLanguageNamePanel(languageName) {
                 getLinter_CID_ForLanguage(languageName);
         }
         if (!linterCID) {
-            descr = dialog.deck.selectedPanel = dialog.deckNoLinterFallback;
+            setPanel(dialog.deckNoLinterFallback)
+            descr = dialog.deckNoLinterFallback;
             descr = descr.firstChild;
             while (descr.firstChild) {
                 descr.removeChild(descr.firstChild);
@@ -132,11 +140,13 @@ function showLanguageNamePanel(languageName) {
             var textNode = document.createTextNode(msg);
             descr.appendChild(textNode);
         } else {
-            descr = dialog.deck.selectedPanel = dialog.genericLinterFallback;
+            setPanel(dialog.genericLinterFallback);
+            descr = dialog.genericLinterFallback;
             var checkbox = document.getElementById("generic_linter_for_current_language");
             checkbox.setAttribute("label",
                                   bundleLang.formatStringFromName("Check syntax for X", [languageName], 1));
             var linterPrefName = "genericLinter:" + languageName;
+            
             if (g_prefset.hasPref(linterPrefName)) {
                 checkbox.checked = g_prefset.getBooleanPref(linterPrefName);
             } else {
@@ -160,6 +170,7 @@ function pref_lint_doEnabling() {
     var enabled = dialog.editUseLinting.checked;
     pref_setElementEnabledState(dialog.lintDelay, enabled);
     pref_setElementEnabledState(dialog.lintEOLs, enabled);
+    pref_setElementEnabledState(dialog.lintShowResultsInline, enabled);
     pref_setElementEnabledState(dialog.lintClearOnTextChange, enabled);
 }
 
@@ -458,10 +469,16 @@ function javaScriptInfo(languageName) {
                         koFileEx.close();
                         var p = /(?:^|\n)\s*\/\/\s*(\d\d\d\d-\d\d-\d\d)/;
                         var m = p.exec(s);
+                        if (!m) {
+                            // Modern jshint form:
+                            // /*! 2.5.10
+                            p = /(?:^|\n)\s*(?:\/\/|\/\*)[\s\!]*([\d\.]+)/;
+                            m = p.exec(s);
+                        }
                         if (m) {
                             specificText = bundleLang.formatStringFromName("Selected Version X", [m[1]], 1);
                         } else {
-                            specificText = bundleLang.formatStringFromName("Selected Version X", [bundleLang.GetStringFromName("Unknown")]);
+                            specificText = bundleLang.formatStringFromName("Selected Version X", [bundleLang.GetStringFromName("Unknown")], 1);
                         }
                     }
                 } catch(ex) {
@@ -684,7 +701,7 @@ function python_setup() {
                             log.debug("which(pyflakes) failed: " + ex);
                         }
                         if (!res) {
-                            res = appInfoEx.haveModules(1, ['pyflakes.scripts.pyflakes']);
+                            res = appInfoEx.haveModules(1, ['pyflakes']);
                         }
                         pyflakesStatusByExecutable[pythonExe] = res;
                     }
@@ -815,7 +832,7 @@ function pythonInfo() {
        
         loadPep8Rcfile: function() {
             this.loadTextboxFromFilepicker("pep8_checking_rcfile",
-                                           "Find a .pep8rc file");
+                                           "Find a pep8 config file");
         },
 
         loadPycheckerRcFile: function() {
@@ -883,7 +900,7 @@ function python3_setup() {
                         pep83StatusByExecutable[python3Exe] = appInfoEx.haveModules(1, ['pep8']);
                     }
                     if (!(python3Exe in pyflakes3StatusByExecutable)) {
-                        res = appInfoEx.haveModules(1, ['pyflakes3.scripts.pyflakes']);
+                        res = appInfoEx.haveModules(1, ['pyflakes']);
                         pyflakes3StatusByExecutable[python3Exe] = res;
                     }
                     languageInfo.Python3.updateUI(python3Exe);

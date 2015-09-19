@@ -85,7 +85,7 @@ if _xpcom_:
 
 lang = "PHP"
 log = logging.getLogger("codeintel.php")
-#log.setLevel(logging.DEBUG)
+# log.setLevel(logging.DEBUG)
 util.makePerformantLogger(log)
 
 #---- language support
@@ -226,6 +226,16 @@ class PHPLangIntel(CitadelLangIntel, ParenStyleCalltipIntelMixin,
                         return Trigger(lang, TRG_FORM_CPLN, "interfaces", pos, implicit)
                     elif text in ("use", ):
                         return Trigger(lang, TRG_FORM_CPLN, "use", pos, implicit)
+                    elif text in ("function", "const"):
+                        # Check for a "use function" or "use const" expression.
+                        p, ch, style = ac.getPrevPosCharStyle(ignore_styles=self.comment_styles)
+                        if p > 0 and style == self.whitespace_style:
+                            p, ch, style = ac.getPrecedingPosCharStyle(style, ignore_styles=self.comment_styles)
+                            if p > 0 and style == self.keyword_style:
+                                p, text = ac.getTextBackWithStyle(style, self.comment_styles, max_text_len=len("use "))
+                                if text == "use":
+                                    return Trigger(lang, TRG_FORM_CPLN, "use", pos, implicit,
+                                                   ilk=text)
                     elif prev_style == self.operator_style and \
                          prev_char == "," and implicit:
                         return self._functionCalltipTrigger(ac, prev_pos, DEBUG)
@@ -302,6 +312,11 @@ class PHPLangIntel(CitadelLangIntel, ParenStyleCalltipIntelMixin,
                             print "Triggering use-namespace completion"
                         return Trigger(lang, TRG_FORM_CPLN, "use-namespace",
                                        pos, implicit)
+                    elif prev_text[1] in ("const", "function"):
+                        if DEBUG:
+                            print "Triggering use-namespace completion with ilk %r" % (prev_text[1])
+                        return Trigger(lang, TRG_FORM_CPLN, "use-namespace",
+                                       pos, implicit, ilk=prev_text[1])
                     elif prev_text[1] != "namespace":
                         if DEBUG:
                             print "Triggering namespace completion"
@@ -1514,7 +1529,7 @@ class PHPFunction:
             if isinstance(doc, list):
                 doc = "".join(doc)
             docinfo = parseDocString(doc)
-            self.doc = docinfo[0]
+            self.doc = self.parsePHPDocBlock(docinfo[0])
             # See if there are any PHPDoc arguments defined in the docstring.
             if docinfo[1]:
                 for argInfo in docinfo[1]:
@@ -1527,11 +1542,53 @@ class PHPFunction:
             if docinfo[2]:
                 self.returnType = docinfo[2][0]
         if self.returnType:
-            self.signature = '%s %s' % (self.returnType, self.signature, )
+            self.signature = '%s %s' % (self.returnType.lower(), self.signature, )
         self.signature += "("
         if self.args:
             self.signature += ", ".join([x.signature for x in self.args])
         self.signature += ")"
+
+    def parsePHPDocBlock(self, docblock):
+        docstrings = docblock.split('\n')
+        docblock_parsed = "\n"
+        try:
+            for docstr in docstrings:
+                
+                # @param entries
+                if docstr.startswith("@param"):
+                    info = docstr.split() 
+                    param_type = info[1]
+                    param_name = info[2]
+                    description = ""
+                    if len(info) > 2:
+                        description = " - " + " ".join(info[3:])
+                    # <param_type> param_name - param_description (if exists)
+                    docblock_parsed += '<%s> %s %s\n' % (param_type.lower(), param_name, description, )
+                    
+                # @return entries
+                elif docstr.startswith("@return"):
+                    info = docstr.split()
+                    return_type = info[1]
+                    description = ""
+                    if len(info) > 2: 
+                        description = " - " + " ".join(info[2:])
+                    docblock_parsed += "Returns %s %s\n" % (return_type.lower(), description)
+                
+                # Misc @ prefixed entries
+                elif docstr.startswith("@"):
+                    # remove @ and make the first latter uppercase
+                    docstr = docstr[1].upper() + docstr[2:] 
+                    docblock_parsed += "%s\n" % docstr
+                    
+                # comments which have not to be parsed (skip empty strings)
+                elif len(docstr.strip()) > 0: 
+                    docblock_parsed += "%s\n" % docstr
+
+        except IndexError:
+            # Malformed docblock
+            return docblock
+        
+        return docblock_parsed
 
     def addReturnType(self, returnType):
         if self.returnType is None:
@@ -1789,11 +1846,12 @@ class PHPTrait(PHPClass):
         self._toElementTree(cixblob, cixelement)
 
 class PHPImport:
-    def __init__(self, name, lineno, alias=None, symbol=None):
+    def __init__(self, name, lineno, alias=None, symbol=None, ilk=None):
         self.name = name
         self.lineno = lineno
         self.alias = alias
         self.symbol = symbol
+        self.ilk = ilk
 
     def __repr__(self):
         # dump our contents to human readable form
@@ -1808,6 +1866,8 @@ class PHPImport:
             elem.attrib["alias"] = self.alias
         if self.symbol:
             elem.attrib["symbol"] = self.symbol
+        if self.ilk:
+            elem.attrib["ilk"] = self.ilk
         return elem
 
 def qualifyNamespacePath(namespace_path):
@@ -2009,6 +2069,7 @@ class PHPParser:
         self.comment = None
         self.comments = []
         self.heredocMarker = None
+        self._anonid = 0
 
         # state : used to store the current JS lexing state
         # return_to_state : used to store JS state to return to
@@ -2205,7 +2266,7 @@ class PHPParser:
             log.debug("NAMESPACE: %r on line %d in %s at depth %r",
                       namespace_path, self.lineno, self.filename, depth)
 
-    def addNamespaceImport(self, namespace, alias):
+    def addNamespaceImport(self, namespace, alias, ilk=None):
         """Import the namespace."""
         namelist = namespace.split("\\")
         namespace_path = "\\".join(namelist[:-1])
@@ -2214,7 +2275,7 @@ class PHPParser:
         symbol = namelist[-1]
         toScope = self.currentNamespace or self.fileinfo
         toScope.includes.append(PHPImport(namespace_path, self.lineno,
-                                          alias=alias, symbol=symbol))
+                                          alias=alias, symbol=symbol, ilk=ilk))
         log.debug("IMPORT NAMESPACE: %s\%s as %r on line %d",
                   namespace_path, symbol, alias, self.lineno)
 
@@ -2416,6 +2477,11 @@ class PHPParser:
                         ids[-1] += "\\"
                     else:
                         ids.append("\\")
+                    if pos + 1 < len(styles) and text[pos + 1] == "{":
+                        # Skip over "{" in grouped "use" statements.
+                        # (Of the form: 'use function foo\{bar, baz};')
+                        # It is handled separately.
+                        pos += 1
                 elif ((t != "&" or last_style != self.PHP_OPERATOR) and \
                       (t != ":" or last_style != identifierStyle)):
                     break
@@ -2835,15 +2901,35 @@ class PHPParser:
 
     def _useKeywordHandler(self, styles, text, p):
         log.debug("_useKeywordHandler:: text: %r", text[p:])
+        text = text[:] # copy since this might be modified in place
+        original_p = p
         looped = False
         while p < len(styles):
             if looped:
                 if text[p] != ",":  # Use statements need to be comma delimited.
                     p += 1
                     continue
-                p += 1
+                elif "{" in text and text.index("{") < p:
+                    # Grouped "use" statements: new in PHP 7.
+                    # Simply remove the last identifier parsed and start over.
+                    # For example, given: 'use foo\{bar, baz}'
+                    # 'foo\bar' will be parsed out, the "," will be detected
+                    # here, and 'foo\{baz}' will be parsed, returning 'foo\baz'.
+                    while text[p] != "{":
+                        text.pop(p)
+                        styles.pop(p)
+                        p -= 1
+                    p = original_p
+                else:
+                    p += 1
             else:
                 looped = True
+
+            # Catch PHP 5.6 "use function" or "use const" definitions.
+            ilk = None
+            if styles[p] == self.PHP_WORD:
+                ilk = text[p]
+                p += 1
 
             namelist, p = self._getIdentifiersFromPos(styles, text, p)
             log.debug("use:%r, p:%d", namelist, p)
@@ -2861,10 +2947,12 @@ class PHPParser:
                     self.currentClass.addTraitReference(namelist[0])
                 else:
                     # Must be a namespace reference.
-                    self.addNamespaceImport(namelist[0], alias)
+                    self.addNamespaceImport(namelist[0], alias, ilk=ilk)
 
     def _foreachKeywordHandler(self, styles, text, p):
         log.debug("_foreachKeywordHandler:: text: %r", text[p:])
+        if "as" not in text:
+            return
         typeNames, p = self._getVariableType(styles, text, p, assignmentChar=None)
         if typeNames:
             if "(" in typeNames[0]:
@@ -2872,11 +2960,11 @@ class PHPParser:
             # Note: It's an item of the array, not an array itself.
             typeNames[-1] += "[]"
             log.debug("typeNames:%r", typeNames)
-        if p < len(text) and text[p] == "as":
+        p = text.index("as") + 1
+        if p < len(text):
             # Two formats:
             #   as $value
             #   as $key => $value
-            p += 1
             namelist1, p = self._getIdentifiersFromPos(styles, text, p,
                                                       self.PHP_VARIABLE)
             namelist2 = None
@@ -3097,6 +3185,13 @@ class PHPParser:
                         newstate = S_TRAIT_RESOLUTION
                 elif keyword == "foreach":
                     self._foreachKeywordHandler(styles, text, pos+1)
+                elif keyword == "if" and "(" in text:
+                    # Skip over the if statement and use the rest.
+                    p = text.index("(")
+                    p = self._skipPastParenArguments(styles, text, p+1)
+                    self.text = text[p:]
+                    self.styles = styles[p:]
+                    self._addCodePiece()
                 else:
                     log.debug("Ignoring keyword: %s", keyword)
                     self._addAllVariables(styles, text, pos)
@@ -3110,6 +3205,19 @@ class PHPParser:
                     log.debug("Trait resolution: text: %r, pos: %d", text, pos)
                     # Stay in this state.
                     newstate = S_TRAIT_RESOLUTION
+                elif "new" in text and "class" in text and \
+                     text.index("new") + 1 == text.index("class"):
+                    # Anonymous classes: new in PHP 7.
+                    p = text.index("class") + 1
+                    extends = self._getExtendsArgument(styles, text, p)
+                    implements = self._getImplementsArgument(styles, text, p)
+                    #print "extends: %r" % (extends)
+                    #print "implements: %r" % (implements)
+                    self._anonid += 1
+                    self.addClass("(anonymous %d)" % self._anonid, extends=extends,
+                                  attributes=attributes,
+                                  interfaces=implements, doc=self.comment,
+                                  isTrait=False)
                 else:
                     log.debug("Ignoring when starting with identifier")
             elif firstStyle == self.PHP_VARIABLE:
@@ -3202,24 +3310,41 @@ class PHPParser:
                 #    self.styles.append(style)
                 #    self.text.append(op)
                 #log.debug("token_next: line %d, %r" % (self.lineno, text))
-                for op in text:
+                brace_count = 0
+
+                for i, op in enumerate(text):
                     self.styles.append(style)
                     self.text.append(op)
                     self.linenos.append(self.lineno)
+
+                    # Skip double-colan, class/variables accesses, like "self::"
+                    if op == ":":
+                        if i+1 < len(text) and text[i+1] == ":":
+                            continue
+                        if i > 0 and text[i-1] == ":":
+                            continue
+
                     if op == "(":
                         # We can start defining arguments now
                         #log.debug("Entering S_IN_ARGS state")
+                        brace_count += 1
                         self.return_to_state = self.state
                         self.state = S_IN_ARGS
                     elif op == ")":
                         #log.debug("Entering state %d", self.return_to_state)
+                        brace_count -= 1
                         self.state = self.return_to_state
+                        # If, else and elseif can be a one-liner, so parse now.
+                        if brace_count == 0 and self.text[0] in ("if", "elseif", "else"):
+                            self._addCodePiece()
                     elif op == "=":
                         if text == op:
                             #log.debug("Entering S_IN_ASSIGNMENT state")
                             self.state = S_IN_ASSIGNMENT
-                    elif op == "{":
+                    elif op == "{" and \
+                         (self.text[0] != "use" or self.text[-2] != "\\"):
                         # Increasing depth/scope, could be an argument object
+                        # (Grouped "use" statements need to be handed below in '}'.)
                         self._addCodePiece()
                         self.incBlock()
                     elif op == "}":

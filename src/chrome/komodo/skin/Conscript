@@ -70,10 +70,9 @@ $cons->InstallInChrome('_helpers/shortcuts.less');
 $cons->Preprocess('templates/new.p.css', 'templates/new.css');
 $cons->InstallInChrome('templates/new.css');
 
+$cons->InstallInChrome('prefs/pref-window.less');
 $cons->InstallInChrome('prefs/prefs.css');
 $cons->InstallInChrome('prefs/pref-codeintel.css');
-
-$cons->InstallInChrome('codeintel/autocomplete-popup.css');
 
 $cons->InstallInChrome('dialogs/customizeToolbar.css');
 $cons->InstallInChrome('dialogs/find2.css');
@@ -120,3 +119,10 @@ $cons->InstallRecursive("$mozChromeDir/komodo/skin/plat/shared/",
 $cons->InstallInChrome('iconset/config.less');
 $cons->InstallInChrome('iconset/rules.less');
 
+$cons->Preprocess('partials/scheme-skinning.p.less', 'partials/scheme-skinning.less');
+$cons->InstallInChrome('partials/scheme-skinning.less');
+
+$cons->InstallInChrome('filters.svg');
+
+$cons->InstallInChrome('svg/defs/cupertino.xml');
+$cons->InstallInChrome('svg/defs/cupertino-blue.xml');

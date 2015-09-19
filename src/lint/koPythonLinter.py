@@ -239,7 +239,6 @@ class KoPythonCommonPyLintChecker(_GenericPythonLinter):
                         pathMessageKey = "%s-%s" % (request.koDoc.displayPath, origStderr)
                         _complainIfNeeded(pathMessageKey,
                                           "Error in pylint: %s", origStderr)
-                        return
                 warnLines = stdout.splitlines(0) # Don't need the newlines.
             except:
                 log.exception("Failed to run %s", cmd)
@@ -461,15 +460,32 @@ class KoPythonCommonPyflakesChecker(_GenericPythonLinter):
             fout.close()
             textlines = text.splitlines()
             cwd = request.cwd
-            env = self._get_fixed_env(prefset, cwd)
+
+            # For the env, don't add a PYTHONPATH entry for cwd, as it can break
+            # module import lookups for pyflakes. E.g.
+            #  foo/
+            #    __init__.py  - an "from foo import bar" in this file will break
+            env = self._get_fixed_env(prefset, cwd=None)
             
             cmd = [pythonExe, checkerExe, tmpfilename]
             # stdout for pyflakes.checker.Checker
             # stderr for __builtin__.compile()
             p = process.ProcessOpen(cmd, cwd=cwd, env=env, stdin=None)
             stdout, stderr = p.communicate()
-            errorLines = stderr.splitlines(0) # Don't need the newlines.
-            warnLines = stdout.splitlines() 
+            warnLines = []
+            errorLines = []
+            if p.returncode and stderr and not stdout:
+                m = re.match("^(.*?):(\d+):(\d+): invalid syntax", stderr)
+                if m is None:
+                    _complainIfNeeded(stderr, "Error running pyflakes on file %r\n%s",
+                                      request.koDoc.displayPath, stderr)
+                # It's a syntax error - convert it.
+                error = "%s:%s: invalid syntax (at column %s)" % (
+                            m.group(1), m.group(2), m.group(3))
+                errorLines = [error]
+            else:
+                warnLines = stdout.splitlines()
+                errorLines = stderr.splitlines(0) # Don't need the newlines.
         finally:
             os.unlink(tmpfilename)
         results = koLintResults()

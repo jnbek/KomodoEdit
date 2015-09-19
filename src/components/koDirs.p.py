@@ -168,7 +168,12 @@ class KoDirs:
         # By definition this is the directory of the main komodo/mozilla
         # executable. 'koDirs.py' is in the components directory, always one
         # dir under the moz bin dir.
-        return dirname(dirname(__file__))
+        # Note: On Mac install, the 'koDirs.py' file resides in the
+        #       'Resources/components' directory.
+        location = dirname(dirname(__file__))
+        if sys.platform == "darwin" and basename(location) == "Resources":
+            location = join(dirname(location), "MacOS")
+        return location
 
     __isDevTreeCache = None
     def _isDevTree(self):
@@ -210,6 +215,16 @@ class KoDirs:
                 # supportDir: <installdir>/lib/support
                 supportDir = join(dirname(self.get_mozBinDir()), "support")
         return supportDir
+
+    def get_resourcesDir(self):
+        # Mac install:
+        #   $installDir/Contents/Resources
+        # else:
+        #   $mozBinDir
+        if sys.platform == "darwin" and not self._isDevTree():
+            return normpath(join(self.get_mozBinDir(), os.pardir, "Resources"))
+        else:
+            return self.get_mozBinDir()
 
     def get_sdkDir(self):
         if self._isDevTree(): # in a development tree
@@ -297,7 +312,7 @@ class KoDirs:
         return pythonExe
 
     def get_komodoPythonLibDir(self):
-        return join(self.get_mozBinDir(), "python", "komodo")
+        return join(self.get_resourcesDir(), "python", "komodo")
     def get_binDBGPDir(self):
         return os.path.join(self.get_supportDir(), "dbgp", "bin")
     def get_perlDBGPDir(self):

@@ -189,6 +189,12 @@ class TrgTestCase(CodeIntelTestCase):
         self.assertTriggerMatches(" require Foo::<|>", name=name)
         self.assertTriggerMatches("\trequire Foo::<|>", name=name)
 
+    def test_complete_variables(self):
+        name = "perl-complete-variables"
+        self.assertTriggerMatches("$<|>f", name=name, pos=1)
+        self.assertNoTrigger("$f<|>")
+        self.assertNoTrigger("<|>$f")
+
     def test_calltip_call_signature(self):
         self.assertNoTrigger("my (<|>$a, $b, $c) = @_")
 
@@ -409,6 +415,29 @@ class CplnTestCase(CodeintelPerlTestCase):
         self.assertCompletionsInclude(
             "require <|>LWP",
             [("module", "LWP")])
+
+    def test_complete_variables(self):
+        self.assertCompletionsAre(
+            """
+            my $varThis = 1;
+            our $varThat = 2;
+            $<|>
+            """,
+            [("variable", "varThat"),
+             ("variable", "varThis")])
+
+    def test_complete_variables_scoping(self):
+        self.assertCompletionsAre(
+            """
+            my $varGlobal = undef;
+            our $varPackage = 2;
+            sub someFunc {
+                my $varFunc = 1;
+            }
+            $<|>
+            """,
+            [("variable", "varGlobal"),
+             ("variable", "varPackage")])
 
     def test_citdl_expr_and_prefix_filter_from_trg(self):
         self.assertCITDLExprIs("split <|>", "split")
@@ -1132,14 +1161,13 @@ class CplnTestCase(CodeintelPerlTestCase):
             markup_text(content, pos=positions[1]),
             [("module", "Date"), ("module", "Headers"), ("module", "Message"),
              ("module", "Request")])
-        self.assertCompletionsAre(
+        self.assertCompletionsInclude(
             markup_text(content, pos=positions[2]),
             [("class", "Date"),
              ("class", "Headers"),  # Message.pm imports HTTP::Headers (among others)
              ("class", "Message"),  # Request.pm imports HTTP::Message
              ("class", "Request"),  # directly imported
-             ("class", "Response"), # Message.pm imports HTTP::Response
-             ("class", "Status")])
+            ])
         self.assertCompletionsInclude(
             markup_text(content, pos=positions[3]),
             [("class", "Util"), ("function", "as_string")])
@@ -1460,6 +1488,24 @@ class CplnTestCase(CodeintelPerlTestCase):
             [("function", "noyou")])
         self.assertCompletionsAre2(you_buf, you_positions[3],
             [("function", "noyou")])
+
+    @tag("bug105308")
+    def test_variable_assignment_from_property(self):
+        content, positions = unmark_text(dedent(r"""
+            my $arrayRef = ['a', 'b', 'c'];
+            my $theNumberTwo = 2;
+            
+            # These parsing of these lines would accidently skip over one line,
+            # causing a variable declaration to be skipped.
+            my $thirdElement = $arrayRef->[$theNumberTwo];
+            my $someElement = $arrayRef->[$theNumberTwo];
+            my $<1>otherElement = $arrayRef->[$theNumberTwo];
+        """))
+        self.assertCompletionsInclude(
+            markup_text(content, pos=positions[1]),
+            [("variable", "thirdElement"),
+             ("variable", "someElement"),
+             ("variable", "otherElement")])
 
 
 

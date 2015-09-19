@@ -4,6 +4,7 @@
 
 __all__ = ["Win32Pipe"]
 
+import sys
 import ctypes
 import logging
 import random
@@ -52,6 +53,7 @@ ReadFile = _decl("ReadFile", BOOL, (HANDLE, LPVOID, DWORD,
                                     PTR(DWORD), PTR(OVERLAPPED)))
 GetOverlappedResult = _decl("GetOverlappedResult", BOOL,
                             (HANDLE, PTR(OVERLAPPED), PTR(DWORD), BOOL))
+ERROR_ACCESS_DENIED = 5
 ERROR_IO_PENDING = 997
 FILE_FLAG_OVERLAPPED = 0x40000000
 FILE_FLAG_FIRST_PIPE_INSTANCE = 0x00080000
@@ -93,7 +95,13 @@ class Win32Pipe(object):
         flags = (PIPE_ACCESS_DUPLEX |
                  FILE_FLAG_FIRST_PIPE_INSTANCE |
                  FILE_FLAG_OVERLAPPED)
-        mode = PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_REJECT_REMOTE_CLIENTS
+
+        mode = PIPE_TYPE_BYTE | PIPE_READMODE_BYTE
+        # Windows XP, version (5, 1) doesn't support PIPE_REJECT_REMOTE_CLIENTS
+        # see bug 104569.
+        if sys.getwindowsversion() >= (5, 2):
+            mode |= PIPE_REJECT_REMOTE_CLIENTS
+
         pipe_prefix = "\\\\.\\pipe\\"
         if name is not None:
             if not name.lower().startswith(pipe_prefix):

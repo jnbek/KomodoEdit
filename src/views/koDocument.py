@@ -84,7 +84,7 @@ class koDocumentBase(object):
     _tabWidth = None
     _useTabs = None
 
-    # The original on-disk file contents.
+    # The original unicode (decoded) on-disk file lines.
     ondisk_lines = None
 
     _DOCUMENT_SIZE_NOT_LARGE = 0
@@ -165,7 +165,7 @@ class koDocumentBase(object):
     def __init__(self):
         self._buffer = None # string The contents of the document
         self._codePage = 65001 # Komodo always uses 65001 (i.e. scintilla UTF-8 mode)
-        self.encoding = None # string The name of the Unicode encoding -- undefined if codepage is not 65001
+        self.encoding = None # string The name of the Unicode encoding
         self._language = None # string what language is this document in?
         self._languageObj = None
         self.prefs = None # set after initWith() call
@@ -278,7 +278,13 @@ class koDocumentBase(object):
         encoding = self._globalPrefs.getString(prefName, "Default Encoding")
         if encoding != "Default Encoding":
             return encoding
-        return self.prefs.getString('encodingDefault')
+        
+        # Attempt to work around issue with file prefs that we have not yet been
+        # able to isolate: https://github.com/Komodo/KomodoEdit/issues/217
+        try:
+            return self.prefs.getString('encodingDefault')
+        except nsError.NS_ERROR_UNEXPECTED:
+            return self._globalPrefs.getString('encodingDefault')
     
     def _setupPrefs(self, encoding_name=None):
         """ We can only setup the prefs on the document once we have a URI for it
@@ -631,7 +637,8 @@ class koDocumentBase(object):
             data = ''
             self._lastModifiedTime = None
         self._lastmd5 = md5(data).digest()
-        self.set_buffer(data,0)
+        buffer = self.set_buffer(data,0)
+        self.ondisk_lines = buffer.splitlines(True)
         self.setSavePoint()
 
         # Bug 93790: If the file is new to Komodo, and has any long lines,
@@ -664,7 +671,6 @@ class koDocumentBase(object):
                 path = getattr(file, 'path', 'path:?')
                 log.exception("_loadfile: failed to set eol on file %s", path)
         self.set_isDirty(0)
-        self.ondisk_lines = data.splitlines(True)
         
     def _get_buffer_from_file(self, file):
         try:
@@ -898,9 +904,9 @@ class koDocumentBase(object):
     def set_codePage(self, codePage):
         # We never allow a code page other than 65001 (aka put scintilla
         # in Unicode/UTF-8 mode).
-        log.warn("setting `koDocument.codePage` is DEPRECATED, hardwired "
-            "to 65001 (unicode mode): %r ignored", codePage)
-        self._codePage = 65001
+        if codePage != "65001":
+            log.warn("setting `koDocument.codePage` is DEPRECATED, hardwired "
+                "to 65001 (unicode mode): %r ignored", codePage)
 
     @components.ProxyToMainThread
     def get_buffer(self):
@@ -923,12 +929,14 @@ class koDocumentBase(object):
                     pass # no one is listening!
             else:
                 encoded_buffer = text
-            self._set_buffer_encoded(encoded_buffer, makeDirty)
         else:
-            self._set_buffer_encoded(text, makeDirty)
+            encoded_buffer = text
+
+        self._set_buffer_encoded(encoded_buffer, makeDirty)
         log.info("set_buffer encoding %s codePage %r", self.encoding.python_encoding_name, self._codePage)
         self.prefs.setStringPref("encoding",
                                  self.encoding.python_encoding_name)
+        return encoded_buffer
 
     @property
     def buffer(self):
@@ -1348,13 +1356,15 @@ class koDocumentBase(object):
             self.lastErrorSvc.setLastError(nsError.NS_ERROR_FAILURE, errmsg)
             raise
         
-    def _getEncodedBufferText(self, encoding_name=None, mode='strict'):
+    def _getEncodedBufferText(self, encoding_name=None, mode='strict', buffer=None):
         """Get the buffer text encoded in a particular encoding, by
         default the current configured encoding.
         """
         if not encoding_name:
             encoding_name = self.encoding.python_encoding_name
-        encodedText = self.get_buffer().encode(encoding_name, mode)
+        if buffer is None:
+            buffer = self.get_buffer()
+        encodedText = buffer.encode(encoding_name, mode)
         if self.encoding.use_byte_order_marker:
             encodedText = self.encoding.encoding_info.byte_order_marker + encodedText
         if self.get_bufferLength() and not len(encodedText):
@@ -1405,43 +1415,13 @@ class koDocumentBase(object):
             raise
         
     def getChangedLinesWithTrailingWhitespace(self):
-        """
-        Most straightforward way: look at the unsaved changes, and
-        remove trailing whitespace only from those lines that start with
-        a "+". End of story.
-        """
-        diffLines = self.getUnsavedChanges(joinLines=False)
-        linesToStripByLineNum = []
-        
-        # nested loop processing all @@ things...
-        hunk_re = re.compile(r'\@\@\s*-(\d+),(\d+)\s*\+(\d+),(\d+)\s+\@\@')
-        ends_with_space_re = re.compile(r'[\-\+](.*?)(\s+)\Z')
-        newLineNum = -1
-        for diffLine in diffLines:
-            m = hunk_re.match(diffLine)
-            if m:
-                # We only care about the line in the final file where the hunk starts.
-                newLineNum = int(m.group(3))
-            elif newLineNum == -1:
-                # keep looking
-                pass
-            else:
-                c = diffLine[0]
-                if c == '-':
-                    pass
-                elif c == ' ':
-                    newLineNum += 1
-                elif c == "+":
-                    m = ends_with_space_re.match(diffLine)
-                    if m or len(diffLine) == 1:
-                        #status = "yes"
-                        # lines are 0-based for scimoz, 1-based for diff
-                        linesToStripByLineNum.append(newLineNum - 1)
-                    # Increment newLineNum for all lines that don't start
-                    # with a '-'
-                    newLineNum += 1
-        # end for
-        return linesToStripByLineNum
+        """Generate a diff and return the changed lines."""
+        diff_content = self.getUnsavedChanges()
+        diff = difflibex.Diff(diff_content)
+        changes = diff.get_changed_line_numbers_by_filepath().values()
+        if changes:
+            return changes[0]
+        return []
 
     def _getCleanChangedLinesOnly(self):
         if not self._globalPrefs.getBooleanPref("cleanLineEnds_ChangedLinesOnly"):
@@ -1718,8 +1698,9 @@ class koDocumentBase(object):
     
             # Translate the buffer before opening the file so if it
             # fails, we haven't truncated the file.
+            buffer = self.get_buffer()
             try:
-                data = self._getEncodedBufferText()
+                data = self._getEncodedBufferText(buffer=buffer)
             except UnicodeError, ex:
                 log.error("unable to encode document as %r: %s",
                     self.encoding.python_encoding_name, ex)
@@ -1758,7 +1739,7 @@ class koDocumentBase(object):
             except:
                 pass # ignore, no one listening
             
-            self.ondisk_lines = data.splitlines(True)
+            self.ondisk_lines = buffer.splitlines(True)
         finally:
             # fix file mode
             if forceSave and mode:
@@ -1956,60 +1937,54 @@ class koDocumentBase(object):
         # likely wants for this file.
         log.info("in _guessFileIndentation")
         useTabs = False
-        usesSpaces = False
         linesChecked = 0
         buffer = self.get_buffer()
 
         # In the first 150 lines of the file, search for the non-blank
         # lines with leading white-space.  Searching farther takes too long.
+        tabcount = 0
+        spacecount = 0
         for line in buffer.splitlines()[:150]:
-            if line[:1] == "\t":
+            if line.startswith("\t"):
                 # If first char is a tab, recognize that and move on
                 linesChecked += 1
-                useTabs = True
-            elif line[:2] == "  ":
+                tabcount += 1
+            elif line.startswith("  "):
                 # If first 2 chars are spaces, recognize that and move on
                 # Require at least two spaces on the line to count it
                 linesChecked += 1
-                usesSpaces = True
+                spacecount += 1
             if linesChecked == 25:
                 # Only check up to 25 lines with indentation
                 break
 
         if linesChecked:
-            log.info("guessed useTabs = %d and usesSpaces = %d",
-                     useTabs, usesSpaces)
             # We found some lines with indentation
-            if useTabs and usesSpaces:
-                # If we found both space and tab indentation, leave the
-                # indentWidth setting as default, fall back to prefs
-                # to decide which to use
-                self._useTabs = self.prefs.getBoolean("useTabs")
-                for v in self._views:
-                    v.scimoz.indent = self.indentWidth
-                    v.scimoz.useTabs = self._useTabs
-            elif useTabs:
+            if tabcount > spacecount:
                 # If only tab indentation was found, set the indentWidth
                 # to the tabWidth, so we essentially always use tabs.
-                self._useTabs = True
-                self._indentWidth = self.tabWidth
-                for v in self._views:
-                    v.scimoz.indent = self.indentWidth
-                    v.scimoz.useTabs = 1
+                useTabs = True
+            elif spacecount and not tabcount:
+                useTabs = False
             else:
-                if usesSpaces:
-                    self._useTabs = False
-                else:
-                    # indeterminate, so use global prefs to decide
-                    self._useTabs = self.prefs.getBoolean("useTabs")
-                for v in self._views:
-                    v.scimoz.useTabs = self.useTabs
-
-            if self._indentWidth is None:
+                # indeterminate, so use global prefs to decide
+                useTabs = self.prefs.getBoolean("useTabs")
+            if useTabs:
+                self._indentWidth = self.tabWidth
+            elif self._indentWidth is None:
                 # Make sure we have a default value here (from prefs)
                 _, value = self._getLangPref(('%lang/indentWidth', 'getLong'),
                                              ('indentWidth', 'getLong'))
                 self._indentWidth = value
+                
+            log.info("guessed useTabs = %r, tabcount %d, spacecount %d",
+                     useTabs, tabcount, spacecount)
+                
+            for v in self._views:
+                self._useTabs = useTabs
+                v.scimoz.useTabs = useTabs
+                v.scimoz.indent = self._indentWidth
+
         else:
             # Lacking better information, fallback to the pref values.
             if self._useTabs is None:
@@ -2022,9 +1997,9 @@ class koDocumentBase(object):
                 _, self._tabWidth = self._getLangPref(('%lang/tabWidth', 'getLong'),
                                                       ('tabWidth', 'getLong'))
             for v in self._views:
-                v.scimoz.useTabs = self.useTabs
-                v.scimoz.indent = self.indentWidth
-                v.scimoz.tabWidth = self.tabWidth
+                v.scimoz.useTabs = self._useTabs
+                v.scimoz.indent = self._indentWidth
+                v.scimoz.tabWidth = self._tabWidth
 
     # Guess indent-width from text content. (Taken from IDLE.)
     #
@@ -2067,14 +2042,13 @@ class koDocumentBase(object):
 
         log.info("_guessIndentWidth: indentWidth=%d, useTabs=%d",
                  indentWidth, useTabs)
+        
         self._indentWidth = indentWidth
         self._useTabs = useTabs
-
-        # Store the guessed values if they are different to the default values.
-        if indentWidth != defaultIndentWidth:
-            self.indentWidth = indentWidth  # Save to prefs.
-        if useTabs != defaultUseTabs:
-            self.useTabs = useTabs  # Save to prefs.
+        
+        for v in self._views:
+            v.scimoz.useTabs = self._useTabs
+            v.scimoz.indent = self._indentWidth
 
     @components.ProxyToMainThreadAsync
     def _statusBarMessage(self, message):

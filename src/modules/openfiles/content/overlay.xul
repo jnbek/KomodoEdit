@@ -23,7 +23,7 @@
             id="openfilesViewbox"
             label="&openFiles.label;"
             insertafter="placesViewbox"
-            icon="chrome://icomoon/skin/icons/files.png"
+            icon="koicon://ko-svg/chrome/icomoon/skin/files.svg"
             src="chrome://openfiles/content/panel.xul"/>
     </ko-pane>
 
@@ -127,12 +127,12 @@
 
     </broadcasterset>
 
-    <menupopup id="popup_view">
+    <menupopup id="popup_toolbars">
         <menuitem
             id="menu_toggleTabBar"
             label="&viewEditorTabs.label;"
             observes="cmd_toggleTabBar"
-            insertafter="view_menu_editor_settings_menuseparator"
+            position="1"
             tooltiptext="&viewEditorTabs.tooltip;"/>
     </menupopup>
 </overlay>

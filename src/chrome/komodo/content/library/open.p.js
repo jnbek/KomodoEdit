@@ -43,6 +43,8 @@ if (typeof(ko)=='undefined') {
  */
 ko.open = {};
 (function() {
+var log = require("ko/logging").getLogger("open");
+
 var fileLineNoRE = /^(.*)[#:](\d+)$/;
 
 var _viewsBundle = Components.classes["@mozilla.org/intl/stringbundle;1"]
@@ -450,16 +452,6 @@ this.displayPath = function open_openDisplayPath(displayPath,
 
     // Fallback to open URI.
     ko.open.URI(displayPath, viewType, true, callback);
-}
-
-
-/**
- * Open Komodo's Start Page - the view will be opened synchronously.
- */
-this.startPage = function open_openStartPage() {
-    ko.history.note_curr_loc();
-    ko.views.manager._doFileOpen("chrome://komodo/content/startpage/startpage.xml#view-startpage",
-                                 "startpage");
 }
 
 this.multipleURIs = function open_openMultipleURIs(urls, viewType, isRecent)

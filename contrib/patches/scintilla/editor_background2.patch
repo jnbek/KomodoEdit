@@ -4,12 +4,11 @@ Index: src/Editor.cxx
 ===================================================================
 --- src/Editor.cxx	(revision 73425)
 +++ src/Editor.cxx	(working copy)
-@@ -8456,7 +8456,7 @@
+@@ -6719,6 +6719,7 @@
  
  	case SCI_SETSELBACK:
- 		vs.selbackset = wParam != 0;
--		vs.selbackground = ColourDesired(lParam);
-+		vs.selbackground = vs.selbackground2 = ColourDesired(lParam);
- 		vs.selAdditionalBackground = ColourDesired(lParam);
+ 		vs.selColours.back = ColourOptional(wParam, lParam);
++		vs.selBackground2 = ColourOptional(wParam, lParam);
+ 		vs.selAdditionalBackground = ColourDesired(static_cast<long>(lParam));
  		InvalidateStyleRedraw();
  		break;

@@ -1,4 +1,4 @@
-version 40
+version 46
 
 # Movement and selection
 binding cmd_left  Left
@@ -22,8 +22,6 @@ binding cmd_newlineSame  Ctrl+Shift+Return
 binding cmd_linePrevious  Up
 binding cmd_lineNext  Down
 binding cmd_selectLineNext  Shift+Down
-binding cmd_lineScrollDown  Ctrl+Down
-binding cmd_lineScrollUp  Ctrl+Up
 binding cmd_selectLinePrevious  Shift+Up
 binding cmd_pageDown  Page_Down 
 binding cmd_selectPageDown  Shift+Page_Down
@@ -40,6 +38,8 @@ binding cmd_selectDocumentEnd  Ctrl+Shift+End
 binding cmd_selectAll Ctrl+A
 binding cmd_blockSelect Ctrl+B
 binding cmd_htmlTagRelocator Ctrl+Shift+Z
+binding cmd_lineScrollUp Ctrl+Up
+binding cmd_lineScrollDown Ctrl+Down
 
 # Cut, copy, paste, delete
 binding cmd_copy Ctrl+C
@@ -54,6 +54,8 @@ binding cmd_tabAwarePaste Ctrl+Alt+V
 binding cmd_delete Delete
 binding cmd_deleteWordLeft  Ctrl+Backspace
 binding cmd_deleteWordRight  Ctrl+Delete
+binding cmd_lineTransposeUp  Alt+Up
+binding cmd_lineTransposeDown  Alt+Down
 
 # Special commands
 binding cmd_redo Ctrl+Y
@@ -197,10 +199,10 @@ binding cmd_selectRectEnd Alt+Shift+End
 binding cmd_selectRectPageUp Alt+Shift+Page_Up
 binding cmd_selectRectPageDown Alt+Shift+Page_Down
 
-binding cmd_goToFile Ctrl+Shift+O
+binding cmd_scope-combined-toolscmds Ctrl+Shift+K
+binding cmd_showCommando Ctrl+Shift+O
+binding cmd_scope-openfiles Ctrl+<
 
 binding cmd_invokeHyperlink Ctrl+Shift+G
-binding cmd_invokeTool Ctrl+Shift+K
 
-binding cmd_addAdditionalCaret Ctrl+K Ctrl+Y
 binding cmd_addNextWordToCaretSet Ctrl+D

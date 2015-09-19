@@ -5,7 +5,7 @@
         <em:id>scope-tools@activestate.com</em:id>
         <em:name>Search Scope - Tools</em:name>
         <em:version>1.0</em:version>
-        <em:description>Searches through available tools / commands</em:description>
+        <em:description>Searches through your toolbox</em:description>
         <em:creator>Nathan Rijksen</em:creator>
         <em:homepageURL>http://www.activestate.com/komodo-ide</em:homepageURL>
         <em:iconURL>chrome://scope-tools/skin/icon.png</em:iconURL>

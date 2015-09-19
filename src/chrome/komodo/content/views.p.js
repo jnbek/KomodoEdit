@@ -192,8 +192,8 @@ viewManager.prototype.postCanClose = function()
         // We didn't call _doCloseViews originally when the view mgr
         // was designed around v2, for perf reasons,
         // which prob don't hold anymore.
-        var ignoreFailures=true, closeStartPage=true, doNotOfferToSave=true;
-        this._doCloseViews(null /* all */, ignoreFailures, closeStartPage, doNotOfferToSave);
+        var ignoreFailures=true, doNotOfferToSave=true;
+        this._doCloseViews(null /* all */, ignoreFailures, doNotOfferToSave);
     } catch(e) {
         /* moz probably already removed them */
         this.log.warn('exception in viewManager.postCanClose:'+e);
@@ -814,7 +814,7 @@ viewManager.prototype.ensureAtLine = function(view, lineno, anchor, currentPos) 
     if (typeof(currentPos) != "undefined") {
        scimoz.currentPos = currentPos;
     }
-    scimoz.ensureVisibleEnforcePolicy(lineno);
+    view.verticallyAlignCaret("onethird");
 }
 
 viewManager.prototype._ensureAtLine = function _ensureAtLine(view, scimoz, lineno, delay, chancesLeft) {
@@ -887,12 +887,6 @@ viewManager.prototype.openViewAsync = function(viewType, uri, tabGroup, tabIndex
 
     var tabList = tabGroup ? document.getElementById(tabGroup) : null;
     switch (viewType) {
-    case "startpage":
-        // ko.open.startPage() uses the current view.
-        // Using doFileOpen... uses the same view when it was closed,
-        // but we have to hardwire the startpage URI
-        uri = "chrome://komodo/content/startpage/startpage.xml#view-startpage";
-        // FALLTHRU
     case "editor":
         ko.views.manager.doFileOpenAsync(uri, viewType, tabList, tabIndex, callback);
         break;
@@ -1216,7 +1210,10 @@ viewManager.prototype.handle_current_view_changed = function(event) {
     this.currentView = event.originalTarget;
 
     if ("koDoc" in this.currentView) {
-        this.currentView.koDoc.setFileAccessed();
+        var koDoc = this.currentView.koDoc;
+        if (koDoc) {
+            koDoc.setFileAccessed();
+        }
     }
 
     if (this.batchMode) {
@@ -1241,19 +1238,20 @@ viewManager.prototype.updateCommands = function() {
     //    dump('newcache['+ x +'] = ' + newcache[x] + '\n');
     //}
     this.currentView.updateCurrentLineColor();
-    if (this.currentView && this.currentView.scintilla) {
-        // Bug 83741 - ensure the scintilla focus is still correctly set,
-        // sometimes the focus may have reset to another element by the time the
-        // below timeout(s) are called, so we must reset it in that case,
-        // otherwise the updateCommands will fail to find a Scintilla
-        // controller, which means these Scintilla commands will not fail to get
-        // updated/enabled.
-        window.setTimeout(function(view) {
-                if (!view.scintilla.isFocused) {
-                    window.document.commandDispatcher.focusedElement = view.scintilla;
-                }
-            }, 1, this.currentView);
-    }
+    
+    // Bug 83741 - ensure the scintilla focus is still correctly set,
+    // sometimes the focus may have reset to another element by the time the
+    // below timeout(s) are called, so we must reset it in that case,
+    // otherwise the updateCommands will fail to find a Scintilla
+    // controller, which means these Scintilla commands will not fail to get
+    // updated/enabled.
+    window.setTimeout(function() {
+            var view = this.currentView;
+            if (view && view.scintilla && !view.scintilla.isFocused) {
+                window.document.commandDispatcher.focusedElement = view.scintilla;
+            }
+        }.bind(this), 1);
+    
     window.setTimeout(window.updateCommands, 1, 'current_view_changed');
     var update_editor_change = (oldcache.type != newcache.type) &&
         (oldcache.type == 'editor' || newcache.type== 'editor');
@@ -1361,7 +1359,7 @@ viewManager.prototype.do_cmd_closeAll = function() {
     if (retval) {
         // Now close all files, without offering to save each individual file,
         // bug 85489.
-        this._doCloseViews(null /* all */, false, false,  /* doNotOfferToSave */ true);
+        this._doCloseViews(null /* all */, false, /* doNotOfferToSave */ true);
     }
     // Ensure the title bar is correctly set - bug 91958.
     ko.uilayout.updateTitlebar(this.currentView);
@@ -1372,13 +1370,11 @@ viewManager.prototype.do_cmd_closeAll = function() {
  * @param {koIView} views - Views to close - when no views are provided, then
  *                          the list of all views will be used.
  * @param {boolean} ignoreFailures - ignore any failures when closing files
- * @param {boolean} closeStartPage - close the start page?
  * @param {boolean} doNotOfferToSave - whether to offer to save dirty files
  */
-viewManager.prototype._doCloseViews = function(views, ignoreFailures, closeStartPage, doNotOfferToSave) {
+viewManager.prototype._doCloseViews = function(views, ignoreFailures, doNotOfferToSave) {
     if (!views) views = this.topView.getDocumentViews(true);
     if (typeof(ignoreFailures) == "undefined") ignoreFailures = false;
-    if (typeof(closeStartPage) == "undefined") closeStartPage = false;
     if (typeof(doNotOfferToSave) == "undefined") doNotOfferToSave = false;
     // returns true if all views were closed.
     var i;
@@ -1387,10 +1383,6 @@ viewManager.prototype._doCloseViews = function(views, ignoreFailures, closeStart
     ko.views.manager.batchMode = true;
     try {
         for (i = views.length-1; i >= 0; i--) {
-            // Exclude the Start Page from "Close All".
-            //   http://bugs.activestate.com/show_bug.cgi?id=27321
-            if (views[i].getAttribute("type") == "startpage" && !closeStartPage)
-                continue;
             if (i == 0 && !this._shuttingDown) {
                 // Ensure the last file closure causes currentView changed
                 // notifications, to update the Komodo window title.
@@ -1454,7 +1446,6 @@ viewManager.prototype.do_cmd_bufferCloseOthers = function() {
     }
     // Now close the "other" files, the offering to save is already done.
     this._doCloseViews(filtered_views, false /* ignoreFailures */,
-                       true /* closeStartPage */,
                        true /* doNotOfferToSave */);
 }
 
@@ -1546,11 +1537,8 @@ viewManager.prototype.offerToSave = function(urls, /* default is null meaning al
             try {
                 view.saveState();
                 if (ko.macros.eventHandler.hookPreFileClose(view)) {
-                    ko.statusBar.AddMessage(
-                        locals.bundle.GetStringFromName("macroInterruptedFileClosingProcedure.message"),
-                        "macro",
-                        5000,
-                        true);
+                    var msg = locals.bundle.GetStringFromName("macroInterruptedFileClosingProcedure.message");
+                    require("notify/notify").send(msg, "editor", {priority: "warning"});
                     return false;
                 }
             } catch (e) {
@@ -2608,7 +2596,7 @@ this.labelsFromView = function(view,
  * @param {string} dirName
  * @param {Number} lineNo - one-based line number
  * @param {string} tabId - Komodo tab id
- * @param {string} viewType - editor/browser/startpage/...
+ * @param {string} viewType - editor/browser/...
  * @param {string} sectionTitle
  * @param {Boolean} showDirty
  * @returns {string} returns a formatted string: 
@@ -2748,6 +2736,8 @@ this.gotoLine_onkeypress_handler = function ko_views_gotoLine_onkeypress_handler
     gotoLinePanel.hidePopup();
 
     var view = ko.views.manager.currentView;
+    ko.history.note_curr_loc(view);
+    
     var scimoz = view.scintilla.scimoz;
     var currentPos = scimoz.currentPos;
     var currentColumn = scimoz.getColumn(currentPos);
@@ -2803,8 +2793,10 @@ this.gotoLine_onkeypress_handler = function ko_views_gotoLine_onkeypress_handler
         targetPos = scimoz.positionAtColumn(targetLine, targetColumn);
         scimoz.gotoPos(targetPos);
     }
-    scimoz.scrollCaret();
+    view.verticallyAlignCaret("onethird");
     scimoz.chooseCaretX();
+    // Ensure the view/editor is properly focused - bug 104827.
+    view.setFocus();
 }
 
 }).apply(ko.views);

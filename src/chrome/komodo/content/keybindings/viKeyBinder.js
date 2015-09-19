@@ -557,10 +557,7 @@ VimController.prototype._initSettings = function() {
     if (prefs.hasPref("viCustomSettings")) {
         // viCustomSettings is a preference-set
         var viPrefs = prefs.getPref("viCustomSettings");
-        var result = new Object();
-        var count = new Object();
-        viPrefs.getPrefIds(result, count);
-        var viSettingNames = result.value;
+        var viSettingNames = viPrefs.getPrefIds();
         var prefType;
         var vim_set_command;
         for (var i = 0; i < viSettingNames.length; i++) {
@@ -623,7 +620,8 @@ VimController.prototype.updateViInternals = function() {
 VimController.prototype.setStatusBarMessage = function(message, timeout,
                                                        highlight)
 {
-    ko.statusBar.AddMessage(message, "vi_emulation", timeout, highlight);
+    require("notify/notify").send(message, "viEmulation",
+                                  {priority: highlight ? "warning" : "info"});
 }
 
 VimController.prototype.updateStatusBarMode = function() {
@@ -806,6 +804,7 @@ VimController.prototype.updateCursorAndSelection = function(scimoz,
         gVimController.updateVisualModeSelection(scimoz,
                                                  newCurrentPos,
                                                  anchorPos);
+        scimoz.scrollCaret();
     } else if ((newCurrentPos != null) && (newCurrentPos != oldCurrentPos)) {
         vimlog.debug("updateCursorAndSelection:: Setting currentPos: "+newCurrentPos+
                      ", oldCurrentPos: "+oldCurrentPos);
@@ -1159,7 +1158,7 @@ VimController.prototype.inputBufferFinish = function ()
         // Return the contents of the input buffer and stop buffering.
         var contents = this.inputBuffer.value;
         this.inputBuffer.value = "";
-        this.statusBarDeck.selectedPanel = document.getElementById("statusbar-message-internal-deck");
+        this.statusBarDeck.selectedIndex = 0;
         this.inputBuffer.removeEventListener('keypress', vim_InputBuffer_KeyPress, false);
         this._inputBuffer_active = false;
         return contents;
@@ -1545,7 +1544,7 @@ VimController.prototype.performSearch = function (scimoz, searchString,
             this._setFindSvcContext("find");
             var repeatSearchCount = Math.max(1, this.repeatCount);
             vimlog.debug("Repeating search: " + repeatSearchCount + " times");
-            var msg = "Search: '" + searchString + "'";
+            var msg = null;
             // Track how many times the search has looped around the document.
             var loopcount = 0;
             var loop_trackingPos = orig_currentPos;
@@ -1610,7 +1609,8 @@ VimController.prototype.performSearch = function (scimoz, searchString,
                 scimoz.currentPos = orig_currentPos;
                 msg = "Operation cancelled: Search looped around twice";
             }
-            this.setStatusBarMessage(msg, 5000, true);
+            
+            if (msg) this.setStatusBarMessage(msg, 5000, true);
         } finally {
             this._restoreFindSvcOptions();
         }
@@ -2097,21 +2097,7 @@ VimController.prototype.findAndRunCommand = function (value)
     // See if it's !, which means it's a run command
     if (value[0] == '!') {
         value = value.substr(1);
-        var userEnvSvc = Components.classes["@activestate.com/koUserEnviron;1"].
-              getService(Components.interfaces.koIUserEnviron);
-        var env = userEnvSvc.GetEncodedEnvironment();
-        ko.run.runCommand(window,
-                       value,
-                       "%D",  // cwd (%D == directory path of file)
-                       env,   // env
-                       false, // insertOutput
-                       false, // operateOnSelection
-                       false, // doNotOpenOutputWindow
-                       'command-output-window', // runIn
-                       0,  // parseOutput
-                       '', // parseRegex
-                       0,  // showParsedOutputList
-                       false); // saveInMRU
+        ko.run.command(value, { "cwd": "%D" });
         return;
     }
 
@@ -2362,13 +2348,13 @@ VimController.command_mappings = {
 // Movement actions
     "cmd_vim_left" :                [ VimController.SPECIAL_COMMAND,VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION | VimController.CHOOSE_CARET_X ],
     "cmd_vim_right" :               [ VimController.SPECIAL_COMMAND,VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION | VimController.CHOOSE_CARET_X ],
-    "cmd_vim_linePrevious" :        [ "cmd_linePrevious",           VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION ],
-    "cmd_vim_lineNext" :            [ "cmd_lineNext",               VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION ],
+    "cmd_vim_linePrevious" :        [ VimController.SPECIAL_COMMAND,VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION ],
+    "cmd_vim_lineNext" :            [ VimController.SPECIAL_COMMAND,VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION ],
     "cmd_vim_linePreviousHome" :    [ "cmd_linePreviousHome",       VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION ],
     "cmd_vim_lineNextHome" :        [ "cmd_lineNextHome",           VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION ],
-    "cmd_vim_home" :                [ "cmd_home",                   VimController.NO_REPEAT_ACTION | VimController.MOVEMENT_ACTION ],
-    "cmd_vim_homeAbsolute" :        [ "cmd_homeAbsolute",           VimController.NO_REPEAT_ACTION | VimController.MOVEMENT_ACTION ],
-    "cmd_vim_end"  :                [ "cmd_end",                    VimController.NO_REPEAT_ACTION | VimController.MOVEMENT_ACTION ],
+    "cmd_vim_home" :                [ VimController.SPECIAL_COMMAND,VimController.NO_REPEAT_ACTION | VimController.MOVEMENT_ACTION ],
+    "cmd_vim_homeAbsolute" :        [ VimController.SPECIAL_COMMAND,VimController.NO_REPEAT_ACTION | VimController.MOVEMENT_ACTION ],
+    "cmd_vim_end"  :                [ VimController.SPECIAL_COMMAND,VimController.NO_REPEAT_ACTION | VimController.MOVEMENT_ACTION ],
     "cmd_vim_scrollHalfPageDown" :  [ VimController.SPECIAL_COMMAND,VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION ],
     "cmd_vim_scrollHalfPageUp" :    [ VimController.SPECIAL_COMMAND,VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION ],
     "cmd_vim_pageDown" :            [ "cmd_pageDown",               VimController.REPEATABLE_ACTION | VimController.MOVEMENT_ACTION ],
@@ -2408,8 +2394,8 @@ VimController.command_mappings = {
     "cmd_vim_selectWordRight" :     [ "cmd_selectWordRight",        VimController.REPEATABLE_ACTION ],
     "cmd_vim_selectHome" :          [ "cmd_selectHome",             VimController.NO_REPEAT_ACTION ],
     "cmd_vim_selectEnd" :           [ "cmd_selectEnd",              VimController.REPEATABLE_ACTION ],
-    "cmd_vim_selectLineNext" :      [ "cmd_selectLineNext",         VimController.REPEATABLE_ACTION ],
-    "cmd_vim_selectLinePrevious" :  [ "cmd_selectLinePrevious",     VimController.REPEATABLE_ACTION ],
+    "cmd_vim_selectLineNext" :      [ VimController.SPECIAL_COMMAND,VimController.REPEATABLE_ACTION ],
+    "cmd_vim_selectLinePrevious" :  [ VimController.SPECIAL_COMMAND,VimController.REPEATABLE_ACTION ],
     "cmd_vim_selectPageDown" :      [ "cmd_selectPageDown",         VimController.REPEATABLE_ACTION ],
     "cmd_vim_selectPageUp" :        [ "cmd_selectPageUp",           VimController.REPEATABLE_ACTION ],
     "cmd_vim_selectDocumentHome" :  [ "cmd_selectDocumentHome",     VimController.NO_REPEAT_ACTION ],
@@ -3049,6 +3035,57 @@ function cmd_vim_right(scimoz, allowWhichWrap /* true */) {
     }
 }
 
+function cmd_vim_linePrevious(scimoz) {
+    // Vi moves full lines at a time, so ignore word wrap - bug 87356.
+    var lineNo = scimoz.lineFromPosition(gVimController._currentPos) - 1;
+    if (lineNo < 0) {
+        return;
+    }
+    // Maintain the column position.
+    var column = scimoz.getColumn(gVimController._currentPos);
+    var lineEndPos = scimoz.getLineEndPosition(lineNo);
+    column = Math.min(column, scimoz.getColumn(lineEndPos));
+    gVimController._currentPos = scimoz.positionAtColumn(lineNo, column);
+}
+
+function cmd_vim_lineNext(scimoz) {
+    // Vi moves full lines at a time, so ignore word wrap - bug 87356.
+    var lineNo = scimoz.lineFromPosition(gVimController._currentPos) + 1;
+    if (lineNo >= scimoz.lineCount) {
+        return;
+    }
+    // Maintain the column position.
+    var column = scimoz.getColumn(gVimController._currentPos);
+    var lineEndPos = scimoz.getLineEndPosition(lineNo);
+    column = Math.min(column, scimoz.getColumn(lineEndPos));
+    gVimController._currentPos = scimoz.positionAtColumn(lineNo, column);
+}
+
+function cmd_vim_home(scimoz) {
+    // Vi moves full lines at a time, so ignore word wrap - bug 87356.
+    scimoz.vCHome();
+}
+
+function cmd_vim_homeAbsolute(scimoz) {
+    // Vi moves full lines at a time, so ignore word wrap - bug 87356.
+    scimoz.home();
+}
+
+function cmd_vim_end(scimoz) {
+    // Vi moves full lines at a time, so ignore word wrap - bug 87356.
+    scimoz.lineEnd();
+}
+
+function cmd_vim_selectLinePrevious(scimoz) {
+    // Vi moves full lines at a time, so ignore word wrap - bug 87356.
+    cmd_vim_linePrevious(scimoz);
+}
+
+function cmd_vim_selectLineNext(scimoz) {
+    // Vi moves full lines at a time, so ignore word wrap - bug 87356.
+    cmd_vim_lineNext(scimoz);
+}
+
 function cmd_vim_scrollHalfPageDown(scimoz) {
     var lineNo = scimoz.lineFromPosition(gVimController._currentPos);
     var visLineNo = scimoz.visibleFromDocLine(lineNo);
@@ -3599,7 +3636,8 @@ function _cmd_vim_findWordUnderCursor_wrapper(scimoz, searchDirection) {
             gVimController._searchOptions = [];
             gVimController.performSearch(scimoz, word, null, true /* matchWord */);
         } else {
-            ko.statusBar.AddMessage("Search: No word found under the cursor.", 5000, true);
+            var msg = "Search: No word found under the cursor.";
+            require("notify/notify").send(msg, "viEmulation", {priority: "warning"});
         }
     } catch (e) {
         vimlog.exception(e);

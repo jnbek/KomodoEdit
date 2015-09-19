@@ -38,19 +38,27 @@ if (ko.skin == undefined)
     const   PREF_CUSTOM_ICONS     = 'koSkin_custom_icons',
             PREF_CUSTOM_SKIN      = 'koSkin_custom_skin',
             PREF_USE_GTK_DETECT   = 'koSkin_use_gtk_detection',
-            PREF_USE_CUSTOM_SCROLLBARS = 'koSkin_use_custom_scrollbars';
+            PREF_EDITOR_SCHEME    = 'editor-scheme',
+            PREF_SCHEME_SKINNING  = 'koSkin_scheme_skinning',
+            PREF_SCHEME_FORCE_DARK  = 'scheme-force-is-dark';
     
     // Old preference value reference
-    var prefOld = {};
-    prefOld[PREF_CUSTOM_ICONS]      = prefs.getString(PREF_CUSTOM_ICONS, '');
-    prefOld[PREF_CUSTOM_SKIN]       = prefs.getString(PREF_CUSTOM_SKIN, '');
-    prefOld[PREF_USE_GTK_DETECT]    = prefs.getBoolean(PREF_USE_GTK_DETECT, true);
+    var prefInfo = {};
+    prefInfo[PREF_CUSTOM_ICONS]      = {type: "String", old: prefs.getString(PREF_CUSTOM_ICONS, '')};
+    prefInfo[PREF_CUSTOM_SKIN]       = {type: "String", old: prefs.getString(PREF_CUSTOM_SKIN, '')};
+    prefInfo[PREF_USE_GTK_DETECT]    = {type: "Boolean", old: prefs.getBoolean(PREF_USE_GTK_DETECT, true)};
+    prefInfo[PREF_EDITOR_SCHEME]     = {type: "String", old: prefs.getString(PREF_EDITOR_SCHEME, '')};
+    prefInfo[PREF_SCHEME_SKINNING]   = {type: "Boolean", old: prefs.getBoolean(PREF_SCHEME_SKINNING, '')};
+    prefInfo[PREF_SCHEME_FORCE_DARK] = {type: "String", old: prefs.getString(PREF_SCHEME_FORCE_DARK, '-1')};
     
     ko.skin.prototype  =
     {
         PREF_CUSTOM_ICONS:      PREF_CUSTOM_ICONS,
         PREF_CUSTOM_SKIN:       PREF_CUSTOM_SKIN,
         PREF_USE_GTK_DETECT:    PREF_USE_GTK_DETECT,
+        PREF_EDITOR_SCHEME:     PREF_EDITOR_SCHEME,
+        PREF_SCHEME_SKINNING:   PREF_SCHEME_SKINNING,
+        PREF_SCHEME_FORCE_DARK: PREF_SCHEME_FORCE_DARK,
         
         shouldFlushCaches: false,
         
@@ -64,7 +72,7 @@ if (ko.skin == undefined)
          */
         init: function()
         {
-            for (let pref in prefOld)
+            for (let pref in prefInfo)
             {
                 prefs.prefObserverService.addObserver(this, pref, false);
             }
@@ -75,56 +83,166 @@ if (ko.skin == undefined)
                 this.gtk.loadDetectedTheme();
             }
 
-            this._setupCustomScrollbars();
+            this.loadSchemeSkinning();
+            this.setSchemeClasses();
+            
+            // Force skin reload if Komodo has been updated
+            var skinVersion = prefs.getString('skinVersion', '');
+            var infoSvc = Cc["@activestate.com/koInfoService;1"].getService(Ci.koIInfoService);
+            var platVersion = infoSvc.buildPlatform + infoSvc.buildNumber;
+            var forceReload = prefs.getBoolean('forceSkinReload', false);
+            if (skinVersion != platVersion || forceReload)
+            {
+                log.info("Komodo has been updated, forcing a skin reload");
+                prefs.setStringPref('skinVersion', platVersion);
+                this.shouldFlushCaches = true;
+                [PREF_CUSTOM_SKIN, PREF_CUSTOM_ICONS].forEach(function(keyName)
+                {
+                    if (prefs.getString(keyName, '') == '') return;
+                    var value = prefs.getStringPref(keyName);
+                    
+                    // Set pref to default without triggering a reload
+                    prefInfo[keyName] = {type: "String", old: prefs.parent.getString(keyName, '')};
+                    prefs.setString(keyName, prefs.parent.getString(keyName, ''));
+                    
+                    // Set pref and trigger reload
+                    prefs.setString(keyName, value);
+                });
+                
+                // And in case that didn't do it ..
+                koLess.reload(true);
+                setTimeout(function()
+                {
+                    koLess.reload();
+                }, 100);
+                prefs.deletePref('forceSkinReload');
+            }
+            
+            // Check if this user used to be an Abyss user, and notify them accordingly
+            if (prefs.getBoolean("removedAbyss", false))
+            {
+                var elem;
+                var installAbyss = function()
+                {
+                    nb.removeNotification(elem);
+                    
+                    var p = require("scope-packages/packages");
+                    p._getAvailablePackagesByKind(p.SKINS, function(pkgs)
+                    {
+                        var abyss;
+                        for (let pkg in pkgs)
+                        {
+                            if (pkg == "Abyss") abyss = pkgs[pkg];
+                        }
+                        
+                        if ( ! abyss)
+                        {
+                            var msg = "Unable to find the Abyss skin, " +
+                                "possibly the Komodo website is under maintenance, " +
+                                "please try again later."
+                            require("ko/dialogs").alert(msg);
+                            return;
+                        }
+                        
+                        p._installPackage(abyss);
+                    });
+                    prefs.deletePref("removedAbyss");
+                };
+                
+                var nb = document.getElementById("komodo-notificationbox");
+                var msg = "The Abyss skin is no longer packaged with Komodo, " +
+                          "would you like to have Komodo download and install it?";
+                elem = nb.appendNotification(msg,
+                                      "abyss-install", null, nb.PRIORITY_INFO_HIGH,
+                [
+                    {
+                        accessKey: "y",
+                        callback: installAbyss,
+                        label: "Yes (Install Abyss Skin)"
+                    },
+                    {
+                        accessKey: "n",
+                        callback: function()
+                        {
+                            prefs.deletePref("removedAbyss");
+                            nb.removeNotification(elem);
+                        },
+                        label: "No Thanks"
+                    },
+                ]);
+            }
         },
         
         /**
          * Preference Observer
          * 
          * @param   {Object} subject 
-         * @param   {String} topic   
+         * @param   {String} topic
          * @param   {String} data    
          * 
          * @returns {Void} 
          */
         observe: function(subject, topic, data)
         {
-            if ([PREF_CUSTOM_ICONS,PREF_CUSTOM_SKIN].indexOf(topic)!=-1)
+            // Skip if the value hasn't changed
+            let value = prefs["get"+prefInfo[topic].type](topic);
+            if (value == prefInfo[topic].old)
             {
-                // Skip if the value hasn't changed
-                let value = prefs.getString(topic, '');
-                if (value == prefOld[topic])
-                {
-                    return;
-                }
-
-                log.debug("Pref changed: " + topic + ", old value: " + prefOld[topic] + ", new value: " + value);
-
-                // Unload the previous skin
-                try {
-                    if (prefOld[topic] != '')
-                    {
-                        this.unloadCustomSkin(prefOld[topic]);
-                    }
-                } catch (e) {}
-
-                // Store new value for future updates
-                prefOld[topic] = value;
-
-                // Queue a cache flush; both skins and iconsets might change the
-                // CSS generated (e.g. for icon URLs)
-                this.shouldFlushCaches = true;
-
-                // Reload relevant skin
-                if (topic == PREF_CUSTOM_SKIN)
-                {
-                    this.loadPreferredSkin();
-                }
-                else if (topic == PREF_CUSTOM_ICONS)
-                {
-                    this.loadPreferredIcons();
-                }
+                return;
             }
+
+            log.debug("Pref changed: " + topic + ", old value: " + prefInfo[topic].old + ", new value: " + value);
+
+            switch (topic)
+            {
+                case PREF_CUSTOM_ICONS:
+                case PREF_CUSTOM_SKIN:
+                    // Unload the previous skin
+                    try {
+                        if (prefInfo[topic].old != '')
+                        {
+                            this.unloadCustomSkin(prefInfo[topic].old);
+                        }
+                    } catch (e) {}
+
+                    // Queue a cache flush; both skins and iconsets might change the
+                    // CSS generated (e.g. for icon URLs)
+                    this.shouldFlushCaches = true;
+
+                    // Reload relevant skin
+                    if (topic == PREF_CUSTOM_SKIN)
+                    {
+                        this.loadPreferredSkin();
+                    }
+                    else if (topic == PREF_CUSTOM_ICONS)
+                    {
+                        var values = ["iconset-base-color", "iconset-toolbar-color",
+                                     "iconset-widgets-color", "iconset-selected-color",
+                                     "iconset-base-defs", "iconset-toolbar-defs",
+                                     "iconset-widgets-defs", "iconset-selected-defs"];
+                        values.forEach(function(pref)
+                        {
+                            // Set value as -1, as deletePref only resets it to the
+                            // global default, it does not actually delete the pref
+                            prefs.setString(pref, '-1');
+                        });
+                        this.loadPreferredIcons();
+                    }
+                    break;
+
+                case PREF_EDITOR_SCHEME:
+                case PREF_SCHEME_SKINNING:
+                    this.loadSchemeSkinning();
+                    this.setSchemeClasses();
+                    break;
+                case PREF_SCHEME_FORCE_DARK:
+                    this.loadSchemeSkinning();
+                    this.setSchemeClasses();
+                    break;
+            }
+
+            // Store new value for future updates
+            prefInfo[topic].old = value;
         },
         
         /**
@@ -199,7 +317,7 @@ if (ko.skin == undefined)
                 try
                 {
                     let initUri = Services.io.newFileURI(initFile);
-                    Services.scriptloader.loadSubScript(initUri.spec, {koSkin: this});
+                    Services.scriptloader.loadSubScript(initUri.spec, {koSkin: this, ko: ko});
                 }
                 catch (e)
                 {
@@ -221,12 +339,15 @@ if (ko.skin == undefined)
                 this._loadCustomSkin(uri);
             }
 
-            this._setupCustomScrollbars();
-
             koLess.reload();
+            setTimeout(function()
+            {
+                koLess.reload();
+            }, 100);
 
             var nb = document.getElementById("komodo-notificationbox");
-            var nf = nb.appendNotification("Some of the changes made may require a Komodo restart to apply properly",
+            if (("_koSkinElem" in nb) && nb._koSkinElem) nb.removeNotification(nb._koSkinElem);
+            nb._koSkinElem = nb.appendNotification("Some of the changes made may require a Komodo restart to apply properly",
                                   "skin-restart", null, nb.PRIORITY_INFO_HIGH,
             [
                 {
@@ -236,33 +357,10 @@ if (ko.skin == undefined)
                 },
                 {
                     accessKey: "l",
-                    callback: nb.removeNotification.bind(nb, nf),
+                    callback: function() { nb.removeNotification(nb._koSkinElem); },
                     label: "Restart Later"
                 },
             ]);
-        },
-
-        /**
-         * Apply the custom scrollbar preferences
-         */
-        _setupCustomScrollbars: function()
-        {
-            var skinName = prefs.getString(PREF_CUSTOM_SKIN, "");
-            try
-            {
-                Cc["@mozilla.org/categorymanager;1"]
-                  .getService(Ci.nsICategoryManager)
-                  .getCategoryEntry("komodo-skins-use-custom-scrollbars",
-                                    skinName);
-                prefs.setBooleanPref(PREF_USE_CUSTOM_SCROLLBARS, true);
-                log.debug("Using custom scrollbars for " + skinName);
-            }
-            catch (ex)
-            {
-                // no category entry
-                prefs.setBooleanPref(PREF_USE_CUSTOM_SCROLLBARS, false);
-                log.debug("Not using custom scrollbars for " + skinName);
-            }
         },
 
         /**
@@ -283,6 +381,52 @@ if (ko.skin == undefined)
                 log.error("Failed unloading manifest: '" + uri);
                 return;
             }
+        },
+        
+        setSchemeClasses:function()
+        {
+            var schemeService = Cc['@activestate.com/koScintillaSchemeService;1'].getService();
+            var scheme = schemeService.getScheme(prefs.getString(PREF_EDITOR_SCHEME));
+            document.documentElement.classList.remove("hud-isdark");
+            document.documentElement.classList.remove("hud-islight");
+            
+            var darkScheme = prefs.getString('scheme-force-is-dark', '-1');
+            if (darkScheme == '-1')
+                darkScheme = scheme.isDarkBackground ? "1" : "0";
+            
+            document.documentElement.classList.add(darkScheme == "1" ? "hud-isdark" : "hud-islight");
+        },
+
+        loadSchemeSkinning: function()
+        {
+            this.unloadVirtualStyle("scheme-skinning-partial");
+            
+            document.documentElement.classList.add("hud-skinning");
+            if ( ! prefs.getBoolean(PREF_SCHEME_SKINNING))
+            {
+                document.documentElement.classList.remove("hud-skinning");
+                return;
+            }
+            
+            var schemeService = Cc['@activestate.com/koScintillaSchemeService;1'].getService();
+            var scheme = schemeService.getScheme(prefs.getString(PREF_EDITOR_SCHEME));
+            var darkScheme = prefs.getString('scheme-force-is-dark', '-1');
+            if (darkScheme == '-1')
+            {
+                darkScheme = scheme.isDarkBackground ? "1" : "0";
+            }
+            
+            var back = scheme.backgroundColor,
+                fore = scheme.foregroundColor;
+
+            // Skip if the value hasn't changed
+            var lessCode = "" +
+                "@dark: " + darkScheme + ";\n" +
+                "@special: " + scheme.getCommon("keywords", "fore") + ";\n" +
+                "@background: " + back + ";\n" +
+                "@foreground: " + fore + ";\n" +
+                "@import url('chrome://komodo/skin/partials/scheme-skinning.less');";
+            this.loadVirtualStyle(lessCode, "scheme-skinning-partial", "agent");
         },
 
         _getFile: function(uri)
@@ -409,10 +553,11 @@ if (ko.skin == undefined)
                 var entries = this.catMan.enumerateCategory('ko-gtk-compat');
                 Components.utils.import("resource://gre/modules/Services.jsm");
 
+                var themeName = themeInfo.name.toLowerCase().replace(/\s+/g, '-');
                 while (entries.hasMoreElements())
                 {
                     var entry = entries.getNext().QueryInterface(Ci.nsISupportsCString);
-                    if (entry == themeInfo.name.toLowerCase())
+                    if (entry == themeName)
                     {
                         var uri = this.catMan.getCategoryEntry('ko-gtk-compat', entry);
                         return uri;
@@ -565,10 +710,138 @@ if (ko.skin == undefined)
                 koRunSvc.RunAsync(commands.shift(), callbackHandler);
             }
             
+        },
+
+        unloadVirtualStyle: function(id)
+        {
+            if ( ! id) throw "You must provide a unique id for your style";
+            if ( ! (id in this._virtualStyles)) return;
+
+            var style = this._virtualStyles[id];
+            var styleUtil = require("sdk/stylesheet/utils");
+
+            var unloadFromWindow = function(_window)
+            {
+                try
+                {
+                    styleUtil.removeSheet(_window, style.href, style.type);
+                } catch (e) {} // no need for an exception if its already removed
+            }
+
+            var windows = Services.wm.getEnumerator(null);
+            while (windows.hasMoreElements())
+            {
+                let xulWindow = windows.getNext().QueryInterface(Ci.nsIDOMWindow);
+                unloadFromWindow(xulWindow);
+            }
+
+            var widgets = ko.widgets._widgets.listitems()
+            for (let widget in widgets)
+            {
+                let [id, data] = widgets[widget];
+                unloadFromWindow(data.browser.contentWindow);
+            }
+
+            delete this._virtualStyles[id];
+        },
+
+        _virtualStyles: {},
+        loadVirtualStyle: function(lessCode, id, type = "author")
+        {
+            this.unloadVirtualStyle(id);
+
+            log.debug("Loading virtual style: " + lessCode);
+
+            koLess.parse(lessCode, function(cssCode)
+            {
+                var path = require('sdk/system').pathFor('ProfD');
+                var ioFile = require('sdk/io/file');
+                path = ioFile.join(path, "userstyleCache", id + ".css");
+
+                if ( ! ioFile.exists(ioFile.dirname(path)))
+                    ioFile.mkpath(ioFile.dirname(path));
+
+                var file = ioFile.open(path, "w");
+                file.write(cssCode);
+                file.close();
+
+                this._virtualStyles[id] = {href: ko.uriparse.pathToURI(path), type: type};
+
+                this._loadVirtualStyle(id);
+                this._virtualStyleListener();
+            }.bind(this));
+        },
+
+        _virtualStyleListener: function()
+        {
+            if (this._virtualStyleListener.initialized) return;
+
+            this._virtualStyleListener.initialized = true;
+
+            Services.wm.addListener({
+                onOpenWindow: function (aWindow)
+                {
+                    let domWindow = aWindow.QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
+                    domWindow.addEventListener("load", function ()
+                    {
+                        domWindow.removeEventListener("load", arguments.callee, false);
+                        for (let id in this._virtualStyles)
+                            this._loadVirtualStyle(id, domWindow);
+                    }.bind(this), false);
+                }.bind(this),
+                onCloseWindow: function (aWindow) {},
+                onWindowTitleChange: function (aWindow, aTitle) {}
+            });
+
+            window.addEventListener("widget-load", function(e)
+            {
+                for (let id in this._virtualStyles)
+                    this._loadVirtualStyle(id, e.detail.browser.contentWindow);
+            }.bind(this));
+            
+            window.addEventListener("pref-frame-load", function(e)
+            {
+                for (let id in this._virtualStyles)
+                    this._loadVirtualStyle(id, e.detail);
+            }.bind(this));
+        },
+
+        _loadVirtualStyle: function(id, _window = null)
+        {
+            if (_window)
+                log.debug("Loading virtual style " + id + " into " + (_window.name || _window.id || "unknown window"));
+
+            var style = this._virtualStyles[id];
+            var styleUtil = require("sdk/stylesheet/utils");
+
+            var loadIntoWindow = function(xulWindow)
+            {
+                styleUtil.loadSheet(xulWindow, style.href, style.type);
+            }
+
+            if (_window)
+                return loadIntoWindow(_window);
+
+            var windows = Services.wm.getEnumerator(null);
+            while (windows.hasMoreElements())
+            {
+                let xulWindow = windows.getNext().QueryInterface(Ci.nsIDOMWindow);
+                loadIntoWindow(xulWindow);
+            }
+
+            var widgets = ko.widgets._widgets.listitems()
+            for (let widget in widgets)
+            {
+                let [id, data] = widgets[widget];
+                loadIntoWindow(data.browser.contentWindow);
+            }
         }
         
     };
     
-    ko.skin = new ko.skin();
+    window.addEventListener("komodo-ui-started", function()
+    {
+        ko.skin = new ko.skin();
+    });
     
 }).apply();

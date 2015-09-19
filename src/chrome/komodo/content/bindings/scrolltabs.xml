@@ -53,14 +53,16 @@
             <xul:hbox flex="1" class="tab-image-middle" xbl:inherits="selected" align="center">
                 <xul:hbox flex="0" class="tab-icons file-status-icons" align="center" pack="center">
                     <xul:image width="16px" class="tab-icon native_file_image" xbl:inherits="validate,disabled,src=file_image_url,alt_image"/>
-                    <xul:image class="tab-icon file-status-icon" xbl:inherits="validate,disabled,file_status,tooltiptext=filestatustip"/>
-                    <xul:image class="tab-icon file-readonly-icon" xbl:inherits="validate,disabled,file_readonly,tooltiptext=locktip"/>
-                    <xul:image class="tab-icon file-status2-icon" xbl:inherits="validate,disabled,file_status2,tooltiptext=filestatus2tip"/>
                 </xul:hbox>
                 <xul:label class="tab-text" xbl:inherits="value=label,accesskey,crop,disabled,selected"
                            flex="1" anonid="label" crop="right"/>
                 <xul:label class="tab-text" xbl:inherits="collapsed=clean,disabled,selected"
                            collapsed="true" value="*"/>
+                <xul:hbox flex="0" class="tab-icons file-status-icons file-status-icons-end" align="center" pack="center">
+                    <xul:image class="tab-icon file-status-icon" xbl:inherits="validate,disabled,file_status,tooltiptext=filestatustip"/>
+                    <xul:image class="tab-icon file-readonly-icon" xbl:inherits="validate,disabled,file_readonly,tooltiptext=locktip"/>
+                    <xul:image class="tab-icon file-status2-icon" xbl:inherits="validate,disabled,file_status2,tooltiptext=filestatus2tip"/>
+                </xul:hbox>
                 <xul:spacer flex="1"/>
                 <xul:toolbarbutton anonid="close-button" xbl:inherits="selected"
                                    class="tab-close-button"/>
@@ -68,6 +70,13 @@
             <xul:hbox class="tab-image-right" xbl:inherits="selected"/>
         </content>
         <implementation>
+            <constructor>
+                var closeBtn = document.getAnonymousElementByAttribute(this, "anonid", "close-button");
+                closeBtn.addEventListener("mousedown", function(e) {
+                    this._mouseDownOnCloseButton = true;
+                    e.stopPropagation();
+                }.bind(this));
+            </constructor>
             <field name="_mouseDownOnCloseButton">false</field>
             <method name="getTabController">
                 <parameter name="tab"/>
@@ -94,16 +103,6 @@
                  updater failing to update view commands, as there is no
                  currently focused view.
                  -->
-            <handler event="mousedown" button="0" phase="capturing">
-            <![CDATA[
-                var anonid = event.originalTarget.getAttribute("anonid");
-                if (anonid == "close-button") {
-                    this._mouseDownOnCloseButton = true;
-                } else {
-                    this._mouseDownOnCloseButton = false;
-                }
-            ]]>
-            </handler>
             <handler event="mouseup" button="0" phase="capturing">
             <![CDATA[
                 var anonid = event.originalTarget.getAttribute("anonid");
@@ -114,6 +113,7 @@
                 } else {
                     ko.views.manager.currentView.setFocus(); 
                 }
+                this._mouseDownOnCloseButton = false;
             ]]>
             </handler>
         </handlers>

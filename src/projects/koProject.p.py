@@ -555,9 +555,6 @@ class koPart(object):
         if hasattr(self, '_path'):
             part._path = self._path
 
-        if self == self._project:
-            self.set_prefset(self.get_prefset().clone())
-
         a_names = self._attributes.keys()
         a_names.sort()
         for a_name in a_names:
@@ -1216,9 +1213,11 @@ class koProject(koLiveFolderPart):
         return createPartFromType(type, self)
 
     def clone(self):
-        project = koProject()
-        project.create()
-        return self._clone(project)
+        dummy_project = koProject()
+        dummy_project.create()
+        project = self._clone(dummy_project)
+        project.set_prefset(self.get_prefset().clone())
+        return project
 
     def set_isDirty(self, dirty):
         if self._isDirty != dirty:
@@ -1634,6 +1633,8 @@ class koProject(koLiveFolderPart):
         log.info("project.load\t%4.4f" % (dt))
 
     def _upgradePrefs(self, kpf_version):
+        prefs = self.get_prefset()
+        
         if kpf_version < 5 and prefs.hasPrefHere("import_exclude_matches"):
             # Add filtering for the new project file types.
             value = prefs.getStringPref("import_exclude_matches")
@@ -1644,7 +1645,6 @@ class koProject(koLiveFolderPart):
                 value = ";".join(values)
                 prefs.setStringPref("import_exclude_matches", value)
 
-        prefs = self.get_prefset()
         if prefs.hasPrefHere("prefs_version"):
             version = prefs.getLongPref("prefs_version")
         else:

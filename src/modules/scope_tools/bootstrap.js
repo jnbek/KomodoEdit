@@ -9,7 +9,8 @@ function loadIntoWindow(window) {
         var commando = window.require("commando/commando");
         commando.registerScope("scope-tools", {
             name: "Tools",
-            icon: "chrome://icomoon/skin/icons/tools.png",
+            description: "Run your toolbox items (snippets, macro's, etc)",
+            icon: "koicon://ko-svg/chrome/icomoon/skin/tools.svg",
             handler: "scope-tools/tools"
         });
     } catch (e) {

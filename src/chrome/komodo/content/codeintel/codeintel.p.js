@@ -153,7 +153,7 @@ ko.codeintel = {};
     }
 
     function handleError(msg) {
-        ko.statusBar.AddMessage(msg, "codeintel", 3000, false, true);
+        require("notify/notify").send(msg, "codeintel", {priority: "error"});
     };
 
 
@@ -396,29 +396,29 @@ ko.codeintel = {};
      * Note that this is public and expected to be modified by extensions/scripts
      */
     this.CompletionUIHandler.prototype.types = {
-        "class":        "chrome://komodo/skin/images/cb_class.png",
-        "function":     "chrome://komodo/skin/images/cb_function.png",
-        "module":       "chrome://komodo/skin/images/cb_module.png",
-        "interface":    "chrome://komodo/skin/images/cb_interface.png",
-        "namespace":    "chrome://komodo/skin/images/cb_namespace.png",
-        "trait":        "chrome://komodo/skin/images/cb_trait.png",
-        "variable":     "chrome://komodo/skin/images/cb_variable.png",
-        "$variable":    "chrome://komodo/skin/images/cb_variable_scalar.png",
-        "@variable":    "chrome://komodo/skin/images/cb_variable_array.png",
-        "%variable":    "chrome://komodo/skin/images/cb_variable_hash.png",
-        "directory":    "chrome://komodo/skin/images/cb_directory.png",
-        "constant":     "chrome://komodo/skin/images/cb_constant.png",
+        "class":        "chrome://komodo/skin/images/codeintel/cb_class.svg",
+        "function":     "chrome://komodo/skin/images/codeintel/cb_function.svg",
+        "module":       "chrome://komodo/skin/images/codeintel/cb_module.svg",
+        "interface":    "chrome://komodo/skin/images/codeintel/cb_interface.svg",
+        "namespace":    "chrome://komodo/skin/images/codeintel/cb_namespace.svg",
+        "trait":        "chrome://komodo/skin/images/codeintel/cb_trait.svg",
+        "variable":     "chrome://komodo/skin/images/codeintel/cb_variable.svg",
+        "$variable":    "chrome://komodo/skin/images/codeintel/cb_variable_scalar.svg",
+        "@variable":    "chrome://komodo/skin/images/codeintel/cb_variable_array.svg",
+        "%variable":    "chrome://komodo/skin/images/codeintel/cb_variable_hash.svg",
+        "directory":    "chrome://komodo/skin/images/codeintel/cb_directory.svg",
+        "constant":     "chrome://komodo/skin/images/codeintel/cb_constant.svg",
         // XXX: Need a better image (a dedicated keyword image)
-        "keyword":      "chrome://komodo/skin/images/cb_interface.png",
+        "keyword":      "chrome://komodo/skin/images/codeintel/cb_interface.svg",
 
-        "element":      "chrome://komodo/skin/images/cb_xml_element.png",
-        "attribute":    "chrome://komodo/skin/images/cb_xml_attribute.png",
+        "element":      "chrome://komodo/skin/images/codeintel/cb_xml_element.svg",
+        "attribute":    "chrome://komodo/skin/images/codeintel/cb_xml_attribute.svg",
 
         // Added for CSS, may want to have a better name/images though...
-        "value":        "chrome://komodo/skin/images/cb_variable.png",
-        "property":     "chrome://komodo/skin/images/cb_class.png",
-        "pseudo-class": "chrome://komodo/skin/images/cb_interface.png",
-        "rule":         "chrome://komodo/skin/images/cb_function.png",
+        "value":        "chrome://komodo/skin/images/codeintel/cb_variable.svg",
+        "property":     "chrome://komodo/skin/images/codeintel/cb_class.svg",
+        "pseudo-class": "chrome://komodo/skin/images/codeintel/cb_interface.svg",
+        "rule":         "chrome://komodo/skin/images/codeintel/cb_function.svg",
     };
 
     this.CompletionUIHandler.prototype.observe = function(prefSet, prefName, prefSetID)
@@ -499,8 +499,8 @@ ko.codeintel = {};
                     ciBuf.async_eval_at_trg(trg, this);
                 } else if (typeof(ko.statusBar.AddMessage) != "undefined") {
                     this._setLastRecentPrecedingCompletionAttemptPos(null);
-                    ko.statusBar.AddMessage("No preceding trigger point within range of current position.",
-                                         "codeintel", 3000, false);
+                    var msg = "No preceding trigger point within range of current position.";
+                    require("notify/notify").send(msg, "codeintel", {priority: "warning"});
                 }
             }.bind(this), handleError);
         } catch(ex) {
@@ -771,7 +771,7 @@ ko.codeintel = {};
                             types.length);
             autoc.addColumn(Ci.koIScintillaAutoCompleteController.COLUMN_TYPE_TEXT,
                             completions, completions.length, true);
-            var typedAlready = scimoz.getTextRange(triggerPos, curPos);
+            var typedAlready = (triggerPos >= curPos) ? "" : scimoz.getTextRange(triggerPos, curPos);
             this._lastPrefix = typedAlready;
             scintilla.autocomplete.show(triggerPos, curPos, triggerPos,
                                         typedAlready);
@@ -952,6 +952,7 @@ ko.codeintel = {};
     this.CompletionUIHandler.prototype._setDefinitionsInfo = function(
           defns, trg)
     {
+        var msg;
         var triggerPos = trg.pos;
         log.debug("CompletionUIHandler.setDefinitionsInfo"+
                               "(triggerPos="+triggerPos+
@@ -995,14 +996,15 @@ ko.codeintel = {};
                     // No file information for ...
                     log.info("goto definition at "+triggerPos+
                                          ": no path information, as symbol is defined in a CIX.");
-                    ko.statusBar.AddMessage("Cannot show definition: symbol is defined in the stdlib or in an API catalog.",
-                                         "codeintel", 5000, true);
+                    msg = "Cannot show definition: symbol is defined in the stdlib or in an API catalog.";
+                    require("notify/notify").send(msg, "codeintel", {priority: "warning"});
                 }
             } else {
                 log.info("goto definition at "+triggerPos+
                                      ": no results found.");
-                ko.statusBar.AddMessage("No definition was found.'",
-                                     "codeintel", 3000, true);
+                msg = "No definition was found.'";
+                require("notify/notify").send(msg, "codeintel",
+                                              {priority: "warning"});
             }
         } catch(ex) {
             log.exception(ex);
@@ -1044,11 +1046,9 @@ ko.codeintel = {};
         msg, highlight)
     {
         setTimeout((function() {
-            var n = this._notification;
-            n.msg = msg;
-            n.highlight = highlight;
-            n.maxProgress = Ci.koINotificationProgress.PROGRESS_NOT_APPLICABLE;
-            ko.statusBar.AddMessage(n);
+            require("notify/notify").send(
+                msg, "codeintel-verbose",
+                {priority: highlight ? "warning" : "info"});
         }).bind(this), 0);
     }
     
@@ -1230,13 +1230,6 @@ ko.codeintel = {};
                     }
                 });
             } else {
-                if (!matchPrefix && useScopes) {
-                    let message = this._bundle.formatStringFromName(
-                        "Variable X is unknown, falling back to full text search",
-                        [searchText], 1);
-                    ko.statusBar.AddMessage(message, "variable-highlight",
-                                            3000, false, true);
-                }
                 if (start > 0) {
                     let text = scimoz.getTextRange(scimoz.positionBefore(start),
                                                    scimoz.positionAfter(start));

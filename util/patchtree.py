@@ -231,15 +231,6 @@ def _run(argv, cwd=None, stdin=None):
         raise Error("no subprocess module to work with")
     return stdout, stderr, retval
 
-def _createTempDir():
-    """Create a temporary directory and return the path to it."""
-    if hasattr(tempfile, "mkdtemp"): # use the newer mkdtemp is available
-        path = tempfile.mkdtemp()
-    else:
-        path = tempfile.mktemp()
-        os.makedirs(path)
-    return path
-
 def _getPatchInfo(dirname):
     if "__patchinfo__" in sys.modules:
         del sys.modules["__patchinfo__"]
@@ -598,6 +589,8 @@ def _applyPatch(patchExe, baseDir, patchRelPath, sourceDir, reverse=0,
         # on Windows, we need to convert everything to use DOS line endings, so
         # that patch.exe can deal with them - and then convert back after
         for resultRelPath in _getPathsInPatch(patchContent, baseArgv)[1]:
+            if not resultRelPath:
+                continue
             resultPath = join(sourceDir, resultRelPath)
             if exists(resultPath):
                 with open(resultPath, "rU") as destFile:
@@ -615,6 +608,7 @@ def _applyPatch(patchExe, baseDir, patchRelPath, sourceDir, reverse=0,
     else:
         log.info("apply '%s'%s", patchRelPath, inReverse)
         argv = baseArgv
+    sys.stdout.write("apply '%s'%s\n" % (patchRelPath, inReverse))
     if reverse:
         argv.append("-R")
     log.debug("run %s in '%s' (stdin '%s')", argv, sourceDir, patchFile)
@@ -889,7 +883,7 @@ def patch(patchesDir, sourceDir, config=None, logDir=None, dryRun=0,
     patchExe = _getPatchExe(patchExe)
 
     # Create a clean working directory.
-    tempDir = _createTempDir()
+    tempDir = tempfile.mkdtemp()
     if sys.platform.startswith("win"):
         # Windows patching leaves around temp files, so we work around this
         # problem by setting a different temp directory, which is later removed

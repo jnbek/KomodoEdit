@@ -6,6 +6,7 @@
  */
 
 @import url("chrome://komodo/skin/_config/window.less");
+@import url("chrome://komodo/skin/_config/panes.less");
 @import url("chrome://komodo/skin/plat/shared/icons_depend.less");
 
 @icon-folder-explore: url("chrome://komodo-places/skin/folder_explore.png");
@@ -21,14 +22,19 @@
 treechildren#places-files-tree-body::-moz-tree-image {
   margin-right: 5px;
 /* #if PLATFORM == "darwin" */
-  margin-left: -5px;
+  margin-left: 0 !important; 
 /* #endif */
 }
+
 treechildren#places-files-tree-body::-moz-tree-image(places_folder_open) {
   list-style-image: @icon-folder-open;
 }
 treechildren#places-files-tree-body::-moz-tree-image(places_folder_closed) {
   list-style-image: @icon-folder-closed;
+}
+
+treechildren#places-files-tree-body::-moz-tree-image {
+    margin-left: 3px;
 }
 
 treechildren#places-files-tree-body::-moz-tree-cell-text {
@@ -39,10 +45,9 @@ treechildren#places-files-tree-body::-moz-tree-cell-text {
    *    16px for width of native icon
    *    5px for half overlap of status icon (status icons are usually 9px).
    */
-  margin-left: -21px;
-  padding-left: 21px;
+  padding-right: 16px;
   background-repeat: no-repeat;
-  background-position: bottom left;
+  background-position: center right;
 }
 treechildren#places-files-tree-body::-moz-tree-cell-text(disabled) {
   color: grey;
@@ -110,6 +115,7 @@ treechildren#places-files-tree-body:-moz-tree-cell-text(places_file, sccConflict
 
 tree.placestree {
   -moz-binding: url('chrome://komodo-places/content/widgets-places.xml#places_tree_b');
+  margin-left: 2px !important;
 }
 
 tree.projectPlacesTree {
@@ -141,8 +147,11 @@ undo-button {
   background: transparent !important;
   border: 0 !important;
 }
-#placesSubpanelSplitterHbox {
-  border-top: 1px dashed @panel-border-color;
+#placesSubpanelSplitterHboxBorder {
+  -moz-box-orient: horizontal;
+  height: 1px;
+  background: @widget-splitter-background;
+  margin: 0 10px;
 }
 #placesSubpanelSplitter > grippy {
   background-image: none !important;
@@ -189,11 +198,7 @@ undo-button {
 
   treechildren#places-files-tree-body::-moz-tree-cell-text {
     background-image: none;
-/* #if PLATFORM == "darwin" */
-    margin-left: -8px;
-/* #else */
     margin-left: 2px;
-/* #endif */
     padding-left: 0;
   }
 

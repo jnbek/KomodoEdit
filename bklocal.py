@@ -63,6 +63,7 @@ sys.path.pop(0)
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "util"))
 import platinfo
+import gitutils
 del sys.path[0]
 
 
@@ -313,22 +314,13 @@ class SiloedPythonInstallDir(black.configure.std.Datum):
     def _Determine_Do(self):
         from os.path import join
         self.applicable = 1
-        xulrunner = black.configure.items["xulrunner"].Get()
-        if xulrunner:
-            mozDevelDist = black.configure.items["mozDevelDist"].Get()
-            if sys.platform == "darwin":
-                # try a xulrunner based build before the old Komodo based build
-                self.value = join(mozDevelDist, "XUL.framework", "Frameworks")
-            else:
-                self.value = join(mozDevelDist, "python")
+        mozDist = black.configure.items["mozDist"].Get()
+        if sys.platform == "darwin":
+            macKomodoAppBuildName = black.configure.items['macKomodoAppBuildName'].Get()
+            self.value = join(mozDist, macKomodoAppBuildName,
+                "Contents", "Frameworks")
         else:
-            mozDist = black.configure.items["mozDist"].Get()
-            if sys.platform == "darwin":
-                macKomodoAppBuildName = black.configure.items['macKomodoAppBuildName'].Get()
-                self.value = join(mozDist, macKomodoAppBuildName,
-                    "Contents", "Frameworks")
-            else:
-                self.value = join(mozDist, "python")
+            self.value = join(mozDist, "python")
         self.determined = 1
 
 class SiloedPythonBinDir(black.configure.std.Datum):
@@ -1416,25 +1408,6 @@ class WithCrashReportSymbols(black.configure.BooleanDatum):
                 self.value = 0
         self.determined = 1
 
-class WithStackato(black.configure.BooleanDatum):
-    def __init__(self):
-        black.configure.Datum.__init__(self, "withStackato",
-            desc="build Komodo with Stackato",
-            acceptedOptions=("", ["with-stackato", "without-stackato"]))
-    def _Determine_Do(self):
-        self.applicable = 1
-        configTokens = black.configure.items["configTokens"].Get()
-        productType = black.configure.items["productType"].Get()
-        self.value = 0
-        for opt, optarg in self.chosenOptions:
-            if opt == "--with-stackato":
-                if not self.value: configTokens.append("stackato")
-                self.value = 1
-            elif opt == "--without-stackato":
-                if self.value: configTokens.append("nostackato")
-                self.value = 0
-        self.determined = 1
-
 class WithTests(black.configure.BooleanDatum):
     def __init__(self):
         black.configure.Datum.__init__(self, "withTests",
@@ -1542,6 +1515,38 @@ class WithWatchdogFSNotifications(black.configure.BooleanDatum):
                 self.value = 0
         self.determined = 1
 
+class WithPGOGeneration(black.configure.BooleanDatum):
+    def __init__(self):
+        black.configure.Datum.__init__(self, "withPGOGeneration",
+            desc="Generate profile guided optimization data",
+            acceptedOptions=("", ["with-pgo-generation", "without-pgo-generation"]))
+    def _Determine_Do(self):
+        self.applicable = 1
+        configTokens = black.configure.items["configTokens"].Get()
+        self.value = 0 # off by default
+        for opt, optarg in self.chosenOptions:
+            if opt == "--with-pgo-generation":
+                self.value = 1
+            elif opt == "--without-pgo-generation":
+                self.value = 0
+        self.determined = 1
+
+class WithPGOCollection(black.configure.BooleanDatum):
+    def __init__(self):
+        black.configure.Datum.__init__(self, "withPGOCollection",
+            desc="Collect profile guided optimization data",
+            acceptedOptions=("", ["with-pgo-collection", "without-pgo-collection"]))
+    def _Determine_Do(self):
+        self.applicable = 1
+        configTokens = black.configure.items["configTokens"].Get()
+        self.value = 0 # off by default
+        for opt, optarg in self.chosenOptions:
+            if opt == "--with-pgo-collection":
+                self.value = 1
+            elif opt == "--without-pgo-collection":
+                self.value = 0
+        self.determined = 1
+
 
 class LudditeVersion(black.configure.Datum):
     def __init__(self):
@@ -1575,23 +1580,6 @@ class IsGTK2Siloed(black.configure.BooleanDatum):
         self.determined = 1
 
 
-class XULRunnerApp(black.configure.Datum):
-    def __init__(self):
-        black.configure.Datum.__init__(self, "xulrunner",
-            desc="build Komodo to run on XULRunner",
-            acceptedOptions=("", ["with-xulrunner", "without-xulrunner"]))
-
-    def _Determine_Do(self):
-        self.applicable = 1
-        self.value = 0
-        for opt, optarg in self.chosenOptions:
-            if opt == "--with-xulrunner":
-                self.value = 1
-            elif opt == "--without-xulrunner":
-                self.value = 0
-        self.determined = 1
-
-
 class UniversalApp(black.configure.Datum):
     def __init__(self):
         black.configure.Datum.__init__(self, "universal",
@@ -1622,17 +1610,7 @@ class MozResourcesDir(black.configure.Datum):
 
     def _Determine_Do(self):
         self.applicable = 1
-        xulrunner = black.configure.items["xulrunner"].Get()
-        if xulrunner:
-            mozDist = black.configure.items['mozDist'].Get()
-            if sys.platform.startswith('darwin'):
-                macKomodoAppBuildName = black.configure.items['macKomodoAppBuildName'].Get()
-                self.value = os.path.join(mozDist, macKomodoAppBuildName,
-                                          "Contents", "Resources")
-            else:
-                self.value = mozDist
-        else:
-            self.value = black.configure.items["mozBin"].Get()
+        self.value = black.configure.items["mozBin"].Get()
         self.determined = 1
 
 class MozComponentsDir(black.configure.Datum):
@@ -2082,14 +2060,7 @@ class MozConfig(black.configure.Datum):
             # to match MSYS (pwd -W).
             buildDir = buildDir[0].lower() + buildDir[1:]
         srcTreeName = os.path.basename(moz_src)
-        xulrunner = black.configure.items["xulrunner"].Get()
-        if xulrunner:
-            # try xulrunner then komodo
-            mozApp="xulrunner"
-        else:
-            mozApp="komodo"
-        self.value = regmozbuild.find_latest_mozilla_config(mozApp=mozApp,
-                                                    buildDir=buildDir,
+        self.value = regmozbuild.find_latest_mozilla_config(buildDir=buildDir,
                                                     srcTreeName=srcTreeName)
         self.determined = 1
 
@@ -2145,7 +2116,6 @@ class MozObjDir(black.configure.Datum):
         komodoShortVersion = black.configure.items["komodoShortVersion"].Get()
         buildType = black.configure.items["buildType"].Get()
         mozObjDir = regmozbuild.find_latest_build(
-            mozApp="komodo",
             komodoVersion=komodoShortVersion,
             buildType=buildType,
             blessed=blessed,
@@ -2155,27 +2125,22 @@ class MozObjDir(black.configure.Datum):
 
     def _mozobjdir_from_mozsrc(self, mozsrc):
         srcdir = os.path.join(mozsrc, 'mozilla')
-        oldcwd = os.getcwd()
-        os.chdir(srcdir)
         # XXX we cannot get the version number yet, so try both
-        trycmd = ['make -f client.mk echo_objdir', # 180+
-                  'make -f client.mk echo-variable-OBJDIR', # 190+
-                  'python build/pymake/make.py -s -f client.mk echo-variable-OBJDIR', # 24.0+
-                  ]
-        try:
-            for cmd in trycmd:
-                i, o = os.popen2(cmd)
-                i.close()
-                output = o.readlines()
-                retval = o.close()
-                if output:
-                    objdir = output[-1].strip()
-                    if objdir: break
-            if retval:
-                raise black.configure.ConfigureError(\
-                    "error running '%s'" % cmd)
-        finally:
-            os.chdir(oldcwd)
+        make = 'make'
+        env = None
+        if sys.platform == "win32":
+            make = 'mozmake.exe'
+            # Windows mozmake requires setting MSYSTEM environ variable.
+            env = os.environ.copy()
+            env['MSYSTEM'] = 'MINGW32'
+        cmd = make + ' -s -f client.mk echo-variable-OBJDIR'
+        p = subprocess.Popen(cmd, cwd=srcdir, shell=True, env=env,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = p.communicate()
+        objdir = stdout.splitlines()[-1].strip()
+        if p.returncode != 0:
+            raise black.configure.ConfigureError(\
+                "error running %r, stderr:\n%s\n" % (cmd, stderr))
 
         if sys.platform == "win32":
             if re.match(r"/\w/", objdir):
@@ -2283,15 +2248,7 @@ class MozDist(black.configure.Datum):
 
     def _Determine_Do(self):
         self.applicable = 1
-        xulrunner = black.configure.items["xulrunner"].Get()
-        if xulrunner:
-            # If we're building with xulrunner, this will be our own
-            # directory in komodo-devel, otherwise, it is the objdir/dist
-            # directory.
-            baseDir = black.configure.items["komodoDevDir"].Get()
-            self.value = os.path.join(baseDir, "instdir")
-        else:
-            self.value = black.configure.items['mozDevelDist'].Get()
+        self.value = black.configure.items['mozDevelDist'].Get()
         self.determined = 1
 
 class SetMozStatePath(black.configure.SetEnvVar):
@@ -2660,33 +2617,8 @@ class BuildNum(black.configure.Datum):
         return int(rev_str)
 
     def _get_git_build_num(self):
-        """Get the build number for a git repo
-        This... may or may not actually make any sense"""
-        # Find the last known commit that was imported from svn
-        cmd = ["git", "log", "--all", "-1", "--grep=git-svn-id:",
-               "--date-order", "--pretty=%ci%n%b"]
-        try:
-            last_svn_commit = _capture_stdout(cmd).splitlines(False)
-        except RuntimeError:
-            raise black.configure.ConfigureError(
-                "error finding last imported svn commit running '%s'" %
-                    (" ".join(cmd),))
-        last_svn_date = last_svn_commit.pop(0)
-        for line in reversed(last_svn_commit):
-            if line.startswith("git-svn-id:"):
-                svn_rev = int(line.split("@", 1)[-1].split()[0])
-                break
-        else:
-            raise black.configure.ConfigureError(
-                "Failed to find last svn revision id")
-        # count the number of commits since the last known svn commit
-        cmd = ["git", "rev-list", "--all", "--since=" + last_svn_date]
-        try:
-            count = _capture_stdout(cmd)
-        except RuntimeError:
-            raise black.configure.ConfigureError(
-                "error running '%s'" % (" ".join(cmd),))
-        return count.count('\n') + svn_rev - 1 # don't double-count last known svn commit
+        """Get the build number for current git repo"""
+        return gitutils.buildnum_from_revision()
 
     def _get_simplified_svn_version(self):
         # Note that this can be a fairly complex string (perhaps not
@@ -2800,25 +2732,12 @@ class SCCBranch(black.configure.Datum):
         
         scc_type = black.configure.items["sccType"].Get()
 
-        if scc_type == "svn":
-            stdout = _capture_stdout(['svn', 'info', dir])
-            for line in stdout.splitlines(0):
-                if re.compile(r"^URL\s*:").match(line):
-                    repo_url = line.split(':', 1)[1].strip()
-                    break
-            scc_branch = ubasename(repo_url)
-        elif scc_type == "git":
+        if scc_type == "git":
             stdout = _capture_stdout(['git', 'branch', '-l'])
             for line in stdout.splitlines(0):
                 if line.startswith("*"):
                     scc_branch = line[1:].strip()
                     break
-            if scc_branch == "master":
-                scc_branch = "trunk"
-        elif scc_type == "hg": # ???
-            scc_branch = _capture_stdout(['hg', 'branch']).strip()
-            if scc_branch == "default":
-                scc_branch = "trunk"
         else:
             return ""
         return scc_branch
@@ -2836,9 +2755,6 @@ class NormSCCBranch(black.configure.Datum):
     def _Determine_Do(self):
         self.applicable = 1
         sccBranch = black.configure.items["sccBranch"].Get()
-        if ".x" in sccBranch:
-            # We don't want to use ".x" names - use the Komodo version instead.
-            sccBranch = black.configure.items["komodoVersion"].Get()
         self.value = re.sub(r'[^\w\.]', '_', sccBranch).lower()
         self.determined = 1
 
@@ -3332,6 +3248,34 @@ class MSIRegistryId(black.configure.Datum):
         productType = black.configure.items["productType"].Get()
         self.value = "%s-%s" % (komodoShortVersion, productType)
         self.determined = 1
+
+
+class OSXCodeSignExecutable(black.configure.Datum):
+    """Optional codesign executable to sign the Mac application bundle with."""
+    def __init__(self):
+        self.longopt = "with-osx-codesign-executable"
+        black.configure.Datum.__init__(self, "osxCodeSignExecutable",
+            desc="Path to codesign executable for Mac OSX code signing",
+            acceptedOptions=("", [self.longopt + "="]))
+
+    def _Determine_Sufficient(self):
+        if not self.applicable:
+            return
+        if self.value is not None:
+            if not os.path.exists(self.value):
+                raise black.configure.ConfigureError(
+                    "OSX codesign executable does not exist %r" % (self.value,))
+
+    def _Determine_Do(self):
+        if sys.platform == "darwin":
+            self.applicable = True
+            for opt, optarg in self.chosenOptions:
+                if opt == "--"+self.longopt:
+                    self.value = os.path.abspath(optarg)
+                    break
+        else:
+            self.applicable = False
+        self.determined = True
 
 
 class OSXCodeSigningCert(black.configure.Datum):
@@ -3958,18 +3902,6 @@ class BuildASCTime(black.configure.Datum):
         self.value = time.asctime(time.gmtime(buildTime))
         self.determined = 1
 
-class XULRunnerBuildId(black.configure.Datum):
-    def __init__(self):
-        black.configure.Datum.__init__(self, "xulrunnerBuildId",
-            desc="a XULRunner-specified format build id")
-
-    def _Determine_Do(self):
-        self.applicable = 1
-        buildTime = black.configure.items["buildTime"].Get()
-        year, month, day = time.gmtime(buildTime)[:3]
-        self.value = "%04d%02d%02d" % (year, month, day)
-        self.determined = 1
-
 class ConfigTokens(black.configure.Datum):
     def __init__(self):
         black.configure.Datum.__init__(self, "configTokens",
@@ -4053,12 +3985,7 @@ class KomodoUpdateManualURL(black.configure.Datum):
 
     def _Determine_Do(self):
         self.applicable = 1
-        productType = black.configure.items["productType"].Get()
-        if productType in ("ide", "edit"):
-            self.value = "http://www.activestate.com/products/komodo_%s/" \
-                         % productType
-        else:
-            self.value = "http://www.openkomodo.com/"
+        self.value = "http://www.komodoide.com/download/#edit"
         self.determined = 1
 
 
@@ -4092,30 +4019,7 @@ class MozMake(black.configure.Datum):
     def _Determine_Do(self):
         self.applicable = 1
         if sys.platform.startswith("win"):
-            with open(join(black.configure.items['mozObjDir'].Get(),
-                           "config.status")) as status:
-                for line in status:
-                    try:
-                        parts = line.split("'''")
-                        if parts[1].strip() == "top_srcdir":
-                            # Python-style config.status
-                            path = parts[3].strip()
-                            if path[1:3] == ":/":
-                                # Python-style path, using pymake
-                                mozSrc = black.configure.items['mozSrc'].Get()
-                                pymake = join(mozSrc, "mozilla", "build", "pymake",
-                                              "make.py")
-                                self.value = [sys.executable, pymake, "-s"]
-                                break
-                            elif path.startswith("/"):
-                                # Msys-style path, using gmake
-                                self.value = [which.which("make")]
-                                break
-                    except:
-                        pass # Wrong line
-                else:
-                    # Shell-style config.status; too old to be pymake
-                    self.value = [which.which("make")]
+            self.value = [which.which("mozmake")]
         else:
             self.value = [which.which("make")]
         assert self.value is not None
@@ -4152,6 +4056,14 @@ class MozGxx(black.configure.Datum):
         self.determined = 1
 
 
+def stripConflictingCFlags(flags):
+    """Remove compile flags that are known to break other Komodo components."""
+    flags_split = flags.split(" ")
+    # Python uses this in PyString_FromStringAndSize:
+    while "-Werror=pointer-sign" in flags_split:
+        flags_split.remove("-Werror=pointer-sign")
+    return " ".join(flags_split)
+
 class MozCFlags(black.configure.Datum):
     def __init__(self):
         black.configure.Datum.__init__(self, "mozCFlags",
@@ -4162,8 +4074,20 @@ class MozCFlags(black.configure.Datum):
         mozObjDir = black.configure.items['mozObjDir'].Get()
         cmd = black.configure.items['mozMake'].Get() + ["echo-variable-CFLAGS"]
         self.value = _capture_stdout(cmd, cwd=mozObjDir).strip()
+        self.value = stripConflictingCFlags(self.value)
         self.determined = 1
 
+
+def stripConflictingCxxFlags(flags):
+    """Remove compile flags that are known to break other Komodo components."""
+    flags_split = flags.split(" ")
+    # Scintilla uses these for struct initialization:
+    while "-Werror=missing-braces" in flags_split:
+        flags_split.remove("-Werror=missing-braces")
+    # Scintilla uses these for UTF comparison:
+    while "-Werror=type-limits" in flags_split:
+        flags_split.remove("-Werror=type-limits")
+    return " ".join(flags_split)
 
 class MozCxxFlags(black.configure.Datum):
     def __init__(self):
@@ -4175,6 +4099,7 @@ class MozCxxFlags(black.configure.Datum):
         mozObjDir = black.configure.items['mozObjDir'].Get()
         cmd = black.configure.items['mozMake'].Get() + ["echo-variable-CXXFLAGS"]
         self.value = _capture_stdout(cmd, cwd=mozObjDir).strip()
+        self.value = stripConflictingCxxFlags(self.value)
         self.determined = 1
 
 

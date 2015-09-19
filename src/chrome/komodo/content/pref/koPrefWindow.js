@@ -208,12 +208,11 @@ koPrefWindow.prototype =
         this.orig_prefset.prefObserverService.addObserver(this, '' /* all prefs */, true);
 
         // debug
-        //cnt=new Object(); ids=new Object();this.prefset.getPrefIds(ids, cnt);
-        //dump("Pref IDs using are " + ids.value + "\n");
+        //dump("Pref IDs using are " + this.prefset.getPrefIds() + "\n");
     },
 
     observe: function(subject, topic, data) {
-        if (typeof(prefLog) != "undefined" && prefLog) {
+        if (typeof(prefLog) != "undefined" && prefLog && topic.indexOf("prefs_show_advanced") !== 0) {
             prefLog.warn("The '"+topic+"' preference has changed while the pref window was open. "+
                          "If you get this message, a pref panel is incorrectly modifying prefs "+
                          "and the modified value will be lost.");
@@ -288,7 +287,7 @@ koPrefWindow.prototype =
      * _onOK: if this function is called and it returns OK, the current
      * pref object is no longer usable.
      */
-    _onOK: function () {
+    _onOK: function (close = true) {
         try {
         // Save the prefs to our temp prefset, so the OK handlers see the new values.
         if (!this.savepageprefs()) {
@@ -303,13 +302,18 @@ koPrefWindow.prototype =
 
         this.savePrefs();
 
-        this._doClosingHandlers(true);
+        if (close) {
+            this._doClosingHandlers(true);
+        }
 
         if (this.deck != null) {
             this._saveCurrentPref();
         }
         
-        this.setResult('ok');
+        if (close) {
+            this.setResult('ok');
+        }
+
         return true;
         } catch (e) {
             prefLog.exception(e);
@@ -318,20 +322,31 @@ koPrefWindow.prototype =
     },
 
     doClose: function() {
-        try {
-            this.filteredTreeView.doClose();
-        } catch(ex) {
-            prefLog.exception(ex);
-        }
         close();
     },
 
     onOK: function () {
-        if (this._onOK()) {
-            this.doClose();
-            return true;
+        if ( ! this.onApply(true)) {
+            return false;
         }
-        return false;
+
+        this.doClose();
+        return true;
+    },
+    
+    onApply: function (close = false) {
+        if ( ! this._onOK(close)) {
+            return false;
+        }
+
+        try {
+            this.filteredTreeView.doApply();
+        } catch(ex) {
+            prefLog.exception(ex);
+            return false;
+        }
+
+        return true;
     },
     
     onCancel: function () {
@@ -372,7 +387,12 @@ koPrefWindow.prototype =
 
     setResult: function (res) {
         if (window.arguments && window.arguments[1])
-            window.arguments[1].res=res;
+        {
+            if ( ! res)
+                delete window.arguments[1].res
+            else
+                window.arguments[1].res=res;
+        }
         return true;
     },
 
@@ -704,14 +724,15 @@ koPrefWindow.prototype =
                 this.orig_prefset.prefObserverService.removeObserver(this, '' /* all prefs */);
             } catch(e) { /* do nothing */ }
             let ids = {};
+
             /**
-             * Trim any newly-set preferences that are the same as old prefs
+             * Check if the newly-set preferences are the same as old prefs.
              * @param oldset {koIPreferenceSet} The old pref set
              * @param newset {koIPreferenceSet} The new pref set
-             * @param id {String} The sub-pref to check/trim
-             * @returns {Boolean} True if the two sub-prefs are equal and have been trimmed
+             * @param id {String} The sub-pref to check.
+             * @returns {Boolean} True if the two sub-prefs are equal.
              */
-            let trimEqualPrefs = function(oldset, newset, id) {
+            let _prefsEqual = function(oldset, newset, id) {
                 let type = newset.getPrefType(id);
                 if (!type) {
                     return false; // no need to check for non-existing prefs
@@ -725,63 +746,55 @@ koPrefWindow.prototype =
                     if (oldPref instanceof Ci.koIPreferenceSet &&
                         newPref instanceof Ci.koIPreferenceSet)
                     {
-                        let children = {};
-                        newPref.getPrefIds(children, {});
-                        let hasDifference = false;
-                        for (let child of children.value) {
-                            if (!trimEqualPrefs(oldPref, newPref, child)) {
-                                hasDifference = true;
+                        let children = newPref.getPrefIds();
+                        for (let child of children) {
+                            if (!_prefsEqual(oldPref, newPref, child)) {
+                                return false;
                             }
                         }
-                        if (!hasDifference) {
-                            newset.deletePref(id);
-                            return true;
-                        }
-                        return false;
                     } else if (oldPref instanceof Ci.koIOrderedPreference &&
                                newPref instanceof Ci.koIOrderedPreference)
                     {
                         if (oldPref.length != newPref.length) {
-                            return false; // Different length; overwrite
+                            return false; // Different length
                         }
-                        // Don't actually modify the new set, since order matters
-                        let tempPref = newPref.clone();
-                        for (let i = newPref.length - 1; i >= 0; --i) {
-                            if (!trimEqualPrefs(oldPref, tempPref, i)) {
+                        for (let i=0; i < newPref.length; i++) {
+                            if (!_prefsEqual(oldPref, newPref, i)) {
                                 return false;
                             }
                         }
-                        // Getting here means the two are exactly the same
-                        newset.deletePref(id);
-                        return true;
-                    }
-                    // Reaching here means we failed to have type-specific logic
-                    let path = [];
-                    try {
-                        for (let parent = oldPref; parent; parent = parent.parent) {
-                            path.push(parent.id);
+                    } else {
+                        // Reaching here means we failed to have type-specific logic
+                        let path = [];
+                        try {
+                            for (let parent = oldPref; parent; parent = parent.parent) {
+                                path.push(parent.id);
+                            }
+                        } catch (ex) {
+                            /* ignore - shouldn't throw, nothing we can do */
                         }
-                    } catch (ex) {
-                        /* ignore - shouldn't throw, nothing we can do */
+                        prefLog.warn("Can't deal with preference object of types " +
+                                     String(oldPref) + " / " + String(newPref) +
+                                     " with id " + (path.reverse().join("::") || id));
+                        return false; // Can't deal with this pref type?
                     }
-                    prefLog.warn("Can't deal with preference object of types " +
-                                 String(oldPref) + " / " + String(newPref) +
-                                 " with id " + (path.reverse().join("::") || id));
-                    return false; // Can't deal with this pref type?
+                } else {
+                    let func = "get" + type.replace(/^./, function(c) c.toUpperCase()) + "Pref";
+                    let oldVal = oldset[func](id);
+                    let newVal = newset[func](id);
+                    if (oldVal != newVal) {
+                        return false;
+                    }
                 }
-                let func = "get" + type.replace(/^./, function(c) c.toUpperCase()) + "Pref";
-                let oldVal = oldset[func](id);
-                let newVal = newset[func](id);
-                let equals = (oldVal == newVal);
-                if (equals) {
-                    newset.deletePref(id);
-                }
-                return equals;
+                return true;
             }
-            this.prefset.getPrefIds(ids, {});
+
+            ids = this.prefset.getPrefIds();
             try {
-                for (let id of ids.value) {
-                    trimEqualPrefs(this.orig_prefset, this.prefset, id);
+                for (let id of ids) {
+                    if (_prefsEqual(this.orig_prefset, this.prefset, id)) {
+                        this.prefset.deletePref(id);
+                    }
                 }
             } catch(e) {
                 prefLog.exception(e, "Failed to trim unchanged prefs, may have unncessary values");
@@ -802,12 +815,34 @@ koPrefWindow.prototype =
         if (!url) {
             return;
         }
+
         var panelName = url;
         if (!(panelName in this.contentFrames)) {
             var XUL_NS="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
             this.contentFrame = document.createElementNS(XUL_NS,'iframe');
             this.contentFrames[panelName] = this.contentFrame;
             this.deck.appendChild(this.contentFrame);
+
+            this.contentFrame.addEventListener("load", function() {
+                var showAdvanced = this.prefset.getBoolean("prefs_show_advanced", false);
+                var docElem = this.contentFrame.contentWindow.document.documentElement;
+                docElem.classList.add("pref-window");
+                if (showAdvanced) docElem.classList.add("show-advanced");
+            }.bind(this), true);
+            
+            var detail = this.contentFrame.contentWindow;
+            var loadEvent = function() {
+                var event = new CustomEvent("pref-frame-load",
+                {
+                    bubbles: false,
+                    cancelable: false,
+                    detail: detail
+                });
+                var _window = parent.opener.ko.windowManager.getMainWindow();
+                _window.dispatchEvent(event);
+            }
+            this.contentFrame.addEventListener("load", loadEvent, true);
+
             this.contentFrame.setAttribute("src", url);
         } else {
             this.contentFrame = this.contentFrames[panelName];
@@ -953,6 +988,14 @@ koPrefWindow.prototype =
     },
 
     onpageload: function ( ) {
+        try {
+            var observerSvc = Cc["@mozilla.org/observer-service;1"].
+                        getService(Ci.nsIObserverService);
+            observerSvc.notifyObservers(null, 'pref_page_loaded', this.contentFrame.contentWindow.location.href);
+        } catch(e) {
+            // Raises exception if no observers are registered. Just ignore that.
+        }
+        
         var prefset = this._getCurrentPrefSet();
         // First see if we need the once-only "OnPreferencePageInitalize" function.
         if( this.contentFrame && ('OnPreferencePageInitalize' in this.contentFrame.contentWindow)) { // is there a start function.

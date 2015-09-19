@@ -166,8 +166,12 @@ class KoExtShell(cmdln.Cmdln):
                  "See `koext help build`.")
     @option("--define", action="append", dest="defines",
             help="Define a preprocessor variable, format 'name=value'.")
+    @option("-i", "--include", action="append", dest="additional_includes",
+            help="Include this file/directory in the resulting xpi")
     @option("-o", "--output-file", action="store", dest="xpi_path",
             help="The resulting xpi output file.")
+    @option("-p", "--packed", action="store_true", dest="packed",
+            help="Installs as a zipped xpi file (default is to unpack it).")
     @option("--unjarred", action="store_true", dest="unjarred",
             help="Do not jar the chrome directory.")
     def _do_koinstall(self, subcmd, opts):
@@ -197,7 +201,9 @@ class KoExtShell(cmdln.Cmdln):
             ppdefines=ppdefines, log=log,
             unjarred=opts.unjarred,
             xpi_path=opts.xpi_path,
-            distinstall=(subcmd == "distinstall"))
+            distinstall=(subcmd == "distinstall"),
+            additional_includes=opts.additional_includes,
+            packed=opts.packed)
 
     @option("-d", "--source-dir",
             help="The directory with the source for the extension "
@@ -210,8 +216,12 @@ class KoExtShell(cmdln.Cmdln):
                  "See `koext help build`.")
     @option("--define", action="append", dest="defines",
             help="Define a preprocessor variable, format 'name=value'.")
+    @option("-i", "--include", action="append", dest="additional_includes",
+            help="Include this file/directory in the resulting xpi")
     @option("-o", "--output-file", action="store", dest="xpi_path",
             help="The resulting xpi output file.")
+    @option("-p", "--packed", action="store_true", dest="packed",
+            help="Installs as a zipped xpi file (default is to unpack it).")
     @option("--unjarred", action="store_true", dest="unjarred",
             help="Do not jar the chrome directory.")
     def _do_kodistinstall(self, subcmd, opts):

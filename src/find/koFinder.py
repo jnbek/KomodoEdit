@@ -625,6 +625,19 @@ class _ConfirmReplacerInFiles(threading.Thread, TreeView):
             if not self._stopped:
                 self.controllerProxy.done()
 
+    def getPath(self, row_idx):
+        return self.events[row_idx].path
+
+    def getSkippedReason(self, row_idx):
+        event = self.events[row_idx]
+        if isinstance(event, findlib2.SkipLargeFilePath):
+            return components.interfaces.koIConfirmReplacerInFiles.SKIPPED_LARGE_FILE
+        if isinstance(event, findlib2.SkipBinaryPath):
+            return components.interfaces.koIConfirmReplacerInFiles.SKIPPED_BINARY_FILE
+        if isinstance(event, findlib2.SkipUnknownLangPath):
+            return components.interfaces.koIConfirmReplacerInFiles.SKIPPED_UNKNOWN_LANG
+        return 0
+
     def toggle_mark(self, row_idx):
         with self._lock:
             self.events[row_idx]._marked = not self.events[row_idx]._marked
@@ -1523,7 +1536,7 @@ class KoFindService(object):
     # XXX: This type of caching could be moved into a general part of the
     #      find service.
     _lastHighlightMatches = []
-    _lastHighlightMd5Hexdigest = None
+    _lastHighlightTextId = None
     _lastHighlightRegexTuple = None
     
     def highlightall(self, scimoz, pattern, start, end, timeout_ms):
@@ -1537,12 +1550,11 @@ class KoFindService(object):
                 self.options.matchWord)
 
             # Check to see if the search highlight is the same as the last one.
-            text = scimoz.text
-            md5_hexdigest = md5(text).hexdigest()
+            textId = scimoz.textId
             regexTuple = (regex, desc)
             if regexTuple == self._lastHighlightRegexTuple and \
                 self._lastHighlightMatches and \
-                self._lastHighlightMd5Hexdigest == md5_hexdigest:
+                self._lastHighlightTextId == textId:
                 # It's the same. Use the last matches again.
                 hightlight_matches = self._lastHighlightMatches
                 # Perf: Check the first match to see if it's still highlighted,
@@ -1561,6 +1573,7 @@ class KoFindService(object):
                     end = None
                 last_endChar = 0
                 last_endByte = 0
+                text = scimoz.text
                 for match in findlib2.find_all_matches(regex, text,
                                                        start=start, end=end):
                     # Remember the match.
@@ -1577,7 +1590,7 @@ class KoFindService(object):
                     last_endChar = endChar
                 self._lastHighlightMatches = hightlight_matches
                 self._lastHighlightRegexTuple = regexTuple
-                self._lastHighlightMd5Hexdigest = md5_hexdigest
+                self._lastHighlightTextId = textId
 
             prevIndicator = scimoz.indicatorCurrent
             prevIndicatorValue = scimoz.indicatorValue
@@ -1636,7 +1649,7 @@ class KoFindService(object):
                 pass # will be slower, but still work
             self._lastHighlightMatches = []
             self._lastHighlightRegexTuple = None
-            self._lastHighlightMd5Hexdigest = None
+            self._lastHighlightTextId = None
             last_endCharIndex = 0
             last_endByteIndex = 0
             for match in findlib2.find_all_matches(regex, text):
@@ -1841,7 +1854,7 @@ class KoFindService(object):
                 resultsView = UnwrapObject(resultsView)
             self._lastHighlightMatches = []
             self._lastHighlightRegexTuple = None
-            self._lastHighlightMd5Hexdigest = None
+            self._lastHighlightTextId = None
             # The offset between the original text pos and the replacement pos.
             replacementByteOffset = 0
             new_text_bits = []

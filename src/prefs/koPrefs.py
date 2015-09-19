@@ -51,6 +51,7 @@
 #   the named pref does not exist, the base preference is consulted (for the
 #   same pref name), and its base pref and so on.
 #
+# TODO: I don't want to have this behavour - does this actually work?
 # * When fetching a pref from a child preference (i.e. a grandchild or deeper),
 #   if the preference is not found, the corresponding pref from the base of the
 #   root is consulted.  That is, for A.getPref("1").grePref("2"), assuming that
@@ -58,9 +59,10 @@
 #   returned prefset is known as a shadow preference.
 #
 # * Shadow prefs do not have any values of their own; they exist to maintain the
-#   correct container relationship.  They cannot be serialized to disk.  Setting
-#   a pref on the shadow pref will turn it into a normal prefset.  In practice,
-#   consumers should not have to think about shadow prefs at all.
+#   correct container relationship. They cannot be serialized to disk. Setting a
+#   pref on the shadow pref will turn it (and all shadowed parent containers)
+#   into a normal prefset. In practice, consumers should not have to think about
+#   shadow prefs at all.
 #
 # * It is an error to fetch a preference from a preference set that does not
 #   exist (after shadow pref lookup, of course).
@@ -98,13 +100,17 @@
 #   of that has changed :)
 #   
 
+import sys
+import os
+import types
+import shutil
+import operator
 import functools
-import sys, os, types, re, shutil, operator, copy
+import copy
 import time
-from xml.dom import minidom
-from xml.sax import SAXParseException
-from eollib import newl
+import logging
 import warnings
+from eollib import newl
 
 from xpcom import components, ServerException, COMException, nsError
 from xpcom.server.enumerator import SimpleEnumerator
@@ -113,10 +119,12 @@ from xpcom.client import WeakReference
 from zope.cachedescriptors.property import Lazy as LazyProperty
 from zope.cachedescriptors.property import LazyClassAttribute
 
+from fileutils import AtomicFileWriter
 from koXMLPrefs import *
 
-import logging
+
 log = logging.getLogger('koPrefs')
+#log.setLevel(logging.DEBUG)
 
 koGlobalPreferenceSets = [
     koGlobalPreferenceDefinition(name="global",
@@ -186,16 +194,19 @@ class koPreferenceSetBase(object):
     stores.
     """
 
+    # The type of the preference; "" for default, "file" for file preferences,
+    # "project" for project preferences.  This is used for deserialization.
     preftype = ''
-    """ The type of the preference; "" for default, "file" for file preferences,
-    "project" for project preferences.  This is used for deserialization.
-    """
 
+    # The parent container that holds this preference set. A root preference set
+    # will never have a container. All child preference sets must have a
+    # container.
+    container = None
+
+    # The preference set this prefset inherits from.  This is needed for child
+    # preferences since it will be used for lookups of prefs that are not set
+    # here; see comment at top of file.
     inheritFrom = NOT_SET
-    """The preference set this prefset inherits from.  This is needed for child
-    preferences since it will be used for lookups of prefs that are not set
-    here; see comment at top of file.
-    """
 
     def __init__(self):
         # koIPreferenceSet attributes.
@@ -204,7 +215,14 @@ class koPreferenceSetBase(object):
         self._commonInit()
 
     def __str__(self):
-        return '<PrefSet: id=%s type=%s idref=%s>' % (self.id, self.preftype, self.idref)
+        result = '<PrefSet: id=%s' % (self.id, )
+        if self.preftype:
+            result += ' type=%s' % (self.preftype, )
+        if self.idref:
+            result += ' idref=%s' % (self.idref, )
+        if self._is_shadow:
+            result += ' shadow=true'
+        return result + ">"
     __repr__ = __str__
 
     def _commonInit(self):
@@ -225,6 +243,9 @@ class koPreferenceSetBase(object):
                     val = UnwrapObject(val)
                 except COMException:
                     pass
+                # Ignore shadow preference sets.
+                if val._is_shadow:
+                    continue
             prefs[id] = val, typ
         return (self.id, self.preftype, self.idref, prefs)
 
@@ -252,6 +273,38 @@ class koPreferenceSetBase(object):
 
     ###########################################################
     # The koIPreferenceSet interface:
+
+    _inheritFrom = None
+    @property
+    def inheritFrom(self):
+        """The prefset from which this prefset will inherit in the case of missing prefs"""
+        if self._inheritFrom is NOT_SET and self.container:
+            container_base = UnwrapObject(self.container.inheritFrom)
+            if container_base:
+                try:
+                    self._inheritFrom = container_base.getPref(self.id)
+                except ServerException:
+                    self._inheritFrom = None
+            else:
+                self._inheritFrom = None
+        elif self._inheritFrom is NOT_SET:
+            self._inheritFrom = None
+        return self._inheritFrom
+    @inheritFrom.setter
+    def inheritFrom(self, base):
+        """The prefset from which this prefset will inherit in the case of missing prefs"""
+        if base:
+            base = UnwrapObject(base)
+            if base is self:
+                raise ServerException(nsError.NS_ERROR_INVALID_ARG,
+                                      "Pref root can't inherit from itself")
+            if __debug__:
+                b = base
+                while b:
+                    assert b is not self, "Trying to set cyclic pref inheritance"
+                    b = UnwrapObject(b.inheritFrom)
+        self._inheritFrom = base
+
     @property
     def parent(self):
         warnings.warn("PrefSet: prefset.parent is deprecated, use prefset.inheritFrom",
@@ -281,12 +334,10 @@ class koPreferenceSetBase(object):
         _validations[prefName] = validation
 
     def reset(self):
-        # Any sub-objects get reset, and simple values get dropped.
-        for id, (val, typ) in self.prefs.items():
-            if typ == "object":
-                val.reset()
-            else:
-                del self.prefs[id]
+        # All preferences get dropped.
+        ids = self.prefs.keys()
+        self.prefs = {}
+        for id in ids:
             self._notifyPreferenceChange(id)
 
     def getPrefIds(self):
@@ -527,25 +578,23 @@ class koPreferenceSetBase(object):
         pickleCache(self, filename)
 
     def serializeToFile(self, filename):
-        with file(filename, "wb") as stream:
+        with AtomicFileWriter(filename, "wb", encoding="utf-8") as stream:
             writeXMLHeader(stream)
             self.serialize(stream, "")
             writeXMLFooter(stream)
         self.serializeToFileFast(filename + "c")
 
+
     def serialize(self, stream, basedir):
         """Serializes the preference set to a stream."""
-        if not self.prefs:
-            # dont serialize empty prefsets
-            return
-        attrs = []
+        stream.write('<preference-set')
         if self.idref:
-            attrs.append('idref="%s"' % cgi_escape(self.idref))
+            stream.write(' idref="%s"' % cgi_escape(self.idref))
         if self.id:
-            attrs.append('id="%s"' % cgi_escape(self.id))
+            stream.write(' id="%s"' % cgi_escape(self.id))
         if self.preftype:
-            attrs.append('preftype="%s"' % cgi_escape(self.preftype))
-        stream.write('<preference-set %s>%s' % (' '.join(attrs), newl))
+            stream.write(' preftype="%s"' % cgi_escape(self.preftype))
+        stream.write('>%s' % (newl))
         for prefName in sorted(self.prefs):
             try:
                 pref, pref_type = self.prefs[prefName]
@@ -554,6 +603,9 @@ class koPreferenceSetBase(object):
             # projects need unwrapped prefs to serialize
             if pref_type == 'object':
                 pref = UnwrapObject(pref)
+                # A shadowed pref inherits from the base, don't write it out.
+                if pref._is_shadow:
+                    continue
             serializePref(stream, pref, pref_type, prefName, basedir)
         stream.write('</preference-set>%s' % newl)
 
@@ -621,35 +673,24 @@ class koPreferenceSetBase(object):
         return something_changed
 
     def dump(self, indent, suppressPrint=False):
-        buf = []
-        if hasattr(self, 'idref'):
-            buf.append("%sPreference Set: id = '%s' idref = '%s'" %
-                       ("  " * indent, self.id, self.idref))
-        else:
-            buf.append("%sPreference Set: id = '%s'" % ("  " * indent, self.id))
-        if hasattr(self, "chainNotifications"):
+        buf = ["%s%r" % ("  " * indent, self)]
+
+        if getattr(self, "chainNotifications", False):
             buf.append('%s  chained = %d' % ("  " * indent, self.chainNotifications))
-        parent = UnwrapObject(self.container)
-        if parent is not None:
-            buf.append('%s  parent = %r' % ("  " * indent, parent))
-            p_vals = [UnwrapObject(val[0]) for val in parent.prefs.values()]
-            if self not in p_vals:
-                buf.append("%s  !!!! parent doesn't own me !!!!" %
-                           ("  " * indent))
-                buf.append(parent.dump(indent + 2, True))
-        else:
-            buf.append('%s  parent is None' % ("  " * indent,))
-        for (foo, bar) in self.prefs.items():
-            buf.append('%s  %s = %s' % ("  " * indent, foo, bar))
-            parent = getattr(UnwrapObject(bar[0]), "parent", None)
-            if base not in (None, self):
-                buf.append("%s  !!!! child has wrong parent !!!!" %
-                           ("  " * indent))
-            if hasattr(bar[0], "QueryInterface"):
-                subPref = bar[0].QueryInterface(components.interfaces.koIPreferenceContainer)
-                buf.append(subPref.dump(indent + 1, True))
-            elif hasattr(bar[0], "dump"):
-                buf.append(bar[0].dump(indent + 1, True))
+        
+        inheritFrom = getattr(self, "inheritFrom", None)
+        if inheritFrom:
+            buf.append('%s  inheritFrom=%r' % ("  " * indent, inheritFrom))
+
+        for id, (val, typ) in self.prefs.items():
+            if typ == "object":
+                container = getattr(UnwrapObject(val), "container", None)
+                if container not in (None, self):
+                    buf.append("%s  !!!! child has wrong container !!!!" %
+                               ("  " * indent))
+                buf.append(val.dump(indent + 1, True))
+            else:
+                buf.append('%s  %s = %r' % ("  " * indent, id, val))
         buf = "\n".join(buf)
         if not suppressPrint:
             print(buf)
@@ -688,13 +729,17 @@ class koPreferenceRoot(koPreferenceSetBase):
     _reg_contractid_ = "@activestate.com/koPreferenceRoot;1"
     _reg_clsid_ = "{2a536b8d-f8c1-4892-a8ab-c184d1bdd195}"
 
-    def clone(self):
-        ret = koPreferenceRoot()
+    def clone(self, ret=None):
+        if ret is None:
+            ret = koPreferenceRoot()
         ret.id = self.id
         ret.idref = getattr(self, "idref", "")
         ret.inheritFrom = self.inheritFrom
         for name, (val, typ) in self.prefs.items():
             if typ == "object":
+                if val._is_shadow:
+                    # No point in cloning shadow prefs.
+                    continue
                 val = val.clone()
             ret.prefs[name] = val,typ
         return ret
@@ -702,31 +747,6 @@ class koPreferenceRoot(koPreferenceSetBase):
     @property
     def _is_shadow(self):
         return False
-
-    _inheritFrom = None
-    @property
-    def inheritFrom(self):
-        """The prefset from which this prefset will inherit in the case of missing prefs"""
-        if self._inheritFrom is NOT_SET:
-            self._inheritFrom = None
-        return self._inheritFrom
-    @inheritFrom.setter
-    def inheritFrom(self, base):
-        """The prefset from which this prefset will inherit in the case of missing prefs"""
-        base = UnwrapObject(base)
-        if base is self:
-            raise ServerException(nsError.NS_ERROR_INVALID_ARG,
-                                  "Pref root can't inherit from itself")
-        if __debug__:
-            b = base
-            while b:
-                assert b is not self, "Trying to set cyclic pref inheritance"
-                b = UnwrapObject(b.inheritFrom)
-        self._inheritFrom = base
-        # Fix up all the children... :(
-        for pref, typ in self.prefs.values():
-            if typ == "object" and hasattr(pref, "inheritFrom"):
-                pref.inheritFrom = NOT_SET
 
 class koPreferenceChild(koPreferenceSetBase):
     _com_interfaces_ = [components.interfaces.koIPreferenceContainer,
@@ -746,17 +766,10 @@ class koPreferenceChild(koPreferenceSetBase):
         self.container = None
 
     def __getstate__(self):
-        data = list(super(koPreferenceChild, self).__getstate__())
-        return tuple(data)
+        return tuple(super(koPreferenceChild, self).__getstate__())
 
     def __setstate__(self, data):
         super(koPreferenceChild, self).__setstate__(data)
-
-    def __str__(self):
-        attrs = ["%s=%s" % (attr, getattr(self, attr, None))
-                 for attr in ("id", "preftype", "idref", "_is_shadow")]
-        return "<PrefSet: %s>" % (" ".join(attrs),)
-    __repr__ = __str__
 
     @property
     def parent(self):
@@ -776,44 +789,37 @@ class koPreferenceChild(koPreferenceSetBase):
                       DeprecationWarning, stacklevel=2)
         self.container = UnwrapObject(value)
 
-    _inheritFrom = None
-    @property
-    def inheritFrom(self):
-        if self._inheritFrom is NOT_SET and self.container:
-            container_base = UnwrapObject(self.container.inheritFrom)
-            if container_base:
-                try:
-                    self._inheritFrom = container_base.getPref(self.id)
-                except ServerException:
-                    self._inheritFrom = None
-            else:
-                self._inheritFrom = None
-        return self._inheritFrom
-    @inheritFrom.setter
-    def inheritFrom(self, value):
-        self._inheritFrom = value
-        # Fix up all the children... :(
-        for pref, typ in self.prefs.values():
-            if typ == "object" and hasattr(pref, "inheritFrom"):
-                pref.inheritFrom = NOT_SET
-        self.chainNotifications = getattr(self.inheritFrom, "chainNotifications",
-                                          self.chainNotifications)
-
-    __has_explicit_set = False
     @property
     def _is_shadow(self):
         """Whether this is a shadow pref.  This will return true if we're a
         shadow pref which should not be serialized"""
-        if self.__has_explicit_set:
-            return False
-        for pref, typ in self.prefs.values():
-            if typ != "object":
-                return False
-            pref = UnwrapObject(pref)
-            if not getattr(pref, "_is_shadow", False):
-                return False
-        # There are no prefs that are not shadow prefs
-        return True
+        return self.inheritFrom is not None
+
+    def _unshadow(self, check_container=True):
+        """Creates a hard copy of the inherited pref set."""
+        if not self._is_shadow:
+            return
+        # We have to unshadow all parent preference sets.
+        if check_container and self.container and self.container._is_shadow:
+            self.container._unshadow()
+            return
+
+        log.debug("Unshadowing %r ", self.id)
+        new_prefs = {}
+        for prefid, (pref, typ) in self.inheritFrom.prefs.items():
+            if typ == "object":
+                # We have to unshadow all child preference sets.
+                pref = self.getPref(prefid)
+                pref = UnwrapObject(pref)
+                assert pref._is_shadow
+                pref._unshadow(check_container=False)
+                assert not pref._is_shadow
+            elif typ not in ("string", "long", "double", "boolean"):
+                raise ServerException(nsError.NS_ERROR_UNEXPECTED,
+                                      "unknown type '%s'" % (typ,))
+            new_prefs[prefid] = (pref, typ)
+        self.prefs = new_prefs
+        self.inheritFrom = None # detach
 
     def _setPrefValue(self, prefName, prefType, prefValue):
         """Override koPreferenceSetBase._setPrefValue to implement the correct
@@ -821,14 +827,8 @@ class koPreferenceChild(koPreferenceSetBase):
         @see koPreferenceSetBase._setPrefValue
         """
         if self._is_shadow:
-            # This is a shadow pref; we need to un-shadow it
-            # XXX: do something if we're checking via something other than empty prefs
-            # Unshadow the containers (recursively)
-            if getattr(self.container, "_is_shadow", False):
-                self.container.setPref(self.id, self)
+            self._unshadow()
         super(koPreferenceChild, self)._setPrefValue(prefName, prefType, prefValue)
-        if prefType == "object":
-            self.__has_explicit_set = True
         assert not self._is_shadow, "Child prefset is shadow after setting"
 
     def setPref(self, prefName, pref):
@@ -845,13 +845,12 @@ class koPreferenceChild(koPreferenceSetBase):
         ret.inheritFrom = self.inheritFrom
         for name, (val, typ) in self.prefs.items():
             if typ == "object":
+                if val._is_shadow:
+                    # No point in cloning shadow prefs.
+                    continue
                 val = val.clone()
             ret.prefs[name] = (val, typ)
         return ret
-
-    def reset(self):
-        super(koPreferenceChild, self).reset()
-        self.__has_explicit_set = False
 
     def serializeToFileFast(self, filename):
         raise NotImplementedError("Can't serialize a pref child to a file")
@@ -916,7 +915,8 @@ class koOrderedPreference(object):
 
     def __init__(self):
         self.id = ""
-        self.reset()
+        self._collection = []
+        self.type = "ordered-preference"
 
     def __str__(self):
         return '<koOrderedPreference: id=%s>'%self.id
@@ -925,7 +925,8 @@ class koOrderedPreference(object):
     def reset(self):
         self.container = None
         self._collection = []
-        self.type = "ordered-preference"
+        # Clear any inheritance.
+        self.inheritFrom = None
 
     def __getstate__(self):
         collection = []
@@ -935,6 +936,8 @@ class koOrderedPreference(object):
                     val = UnwrapObject(val)
                 except COMException:
                     pass
+                if val._is_shadow:
+                    continue
             collection.append( (val, typ) )
         return (collection, self.id, self.type)
 
@@ -1126,13 +1129,13 @@ class koOrderedPreference(object):
     def clone(self):
         ret = koOrderedPreference()
         ret.id = self.id
-        for val in self._collection:
-            assert isinstance(val, tuple), \
-                "something in the collection that isn't a tuple"
-            assert len(val) == 2, "invalid tuple in collection"
-            if val[1] == "object":
-                val = (val[0].clone(), "object")
-            ret._collection.append(val)
+        for val, typ in self._collection:
+            if typ == "object":
+                if val._is_shadow:
+                    # No point in cloning shadow prefs.
+                    continue
+                val = val.clone()
+            ret._collection.append((val, typ))
         return ret
 
     @_detaches
@@ -1164,10 +1167,12 @@ class koOrderedPreference(object):
         return True
 
     def serializeToFile(self, filename):
-        with file(filename, "wb") as stream:
+        with AtomicFileWriter(filename, "wb", encoding="utf-8") as stream:
             self.serialize(stream, "")
 
     def serialize(self, stream, basedir):
+        if self._is_shadow:
+            return
         if self.id:
             stream.write('<ordered-preference id="%s">%s' \
                          % (cgi_escape(self.id), newl))
@@ -1180,13 +1185,10 @@ class koOrderedPreference(object):
         stream.write('</ordered-preference>%s' % newl)
 
     def dump(self, indent, suppressPrint=False):
-        buf = []
-        buf.append("%sDumping koOrderedPreference %s:" % ("  " * indent, self))
-        buf.append("%s  id == %s" % ("  " * indent, self.id))
-        for pref in self._collection:
-            if hasattr(pref, "QueryInterface"):
-                subPref = pref.QueryInterface(components.interfaces.koIPreferenceContainer)
-                buf.append(subPref.dump(indent + 1, True))
+        buf = ["%s%r" % ("  " * indent, self)]
+        for pref, typ in self._collection:
+            if typ == "object":
+                buf.append(pref.dump(indent + 1, True))
             else:
                 buf.append('%s  %s' % ("  " * indent, pref))
         buf = "\n".join(buf)
@@ -1275,7 +1277,7 @@ class koPreferenceCache(object):
         assert self._is_sane()
     
     def serializeToFile(self, filename):
-        with file(filename, "wb") as stream:
+        with AtomicFileWriter(filename, "wb", encoding="utf-8") as stream:
             writeXMLHeader(stream)
             self.serialize(stream, "")
             writeXMLFooter(stream)
@@ -1360,7 +1362,8 @@ class koPreferenceCache(object):
     def getPref(self, id):
         assert self._is_sane()
         pref = UnwrapObject(self.pref_map.get(id, (None, None))[0])
-        if not isinstance(pref, koPreferenceRoot):
+        if not isinstance(pref, (koPreferenceRoot, koPreferenceChild)):
+            log.warn("deserializing and reserializing prefset %r", id)
             # Deserializing prefsets from before Komodo 9.0.0a1; there was no
             # separate class for root prefs.
             root = koPreferenceRoot()
@@ -1417,6 +1420,11 @@ class koProjectPreferenceSet(koPreferenceRoot):
     _reg_clsid_ = "{961bad79-65e1-964e-bc84-e65941a8c5f1}"
     preftype = 'project'
 
+    def clone(self):
+        ret = koProjectPreferenceSet()
+        koPreferenceRoot.clone(self, ret)
+        return ret
+
 class koFilePreferenceSet(koPreferenceRoot):
     _com_interfaces_ = [components.interfaces.koIFilePreferenceSet] + \
                        koPreferenceRoot._com_interfaces_
@@ -1424,6 +1432,11 @@ class koFilePreferenceSet(koPreferenceRoot):
     _reg_contractid_ = "@activestate.com/koFilePreferenceSet;1"
     _reg_clsid_ = "{433a740b-bcb1-b747-8dcf-c570be6d905e}"
     preftype = 'file'
+
+    def clone(self):
+        ret = koFilePreferenceSet()
+        koPreferenceRoot.clone(self, ret)
+        return ret
 
 ###################################################
 #
@@ -1558,8 +1571,14 @@ class koGlobalPrefService(object):
         self.pref_map[prefName] = None, defn
         return self.getPrefs(prefName)
 
+    def removeIdleObserver(self):
+        if self._addedIdleObserver:
+            self._addedIdleObserver = False
+            self.idleService.removeIdleObserver(self, self.IDLE_TIME)
+
     def shutDown(self):
         log.debug("koGlobalPrefService shutting down...")
+        self.removeIdleObserver()
         self.saveState()
         obsvc = components.classes["@mozilla.org/observer-service;1"].\
                     getService(components.interfaces.nsIObserverService)
@@ -1575,8 +1594,7 @@ class koGlobalPrefService(object):
             self.shutDown()
         elif topic == 'idle':
             # nsIIdleService has called us - it's time to save prefs
-            self._addedIdleObserver = False
-            self.idleService.removeIdleObserver(self, self.IDLE_TIME)
+            self.removeIdleObserver()
             self.saveState()
 
     def saveState(self):

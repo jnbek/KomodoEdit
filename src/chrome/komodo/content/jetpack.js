@@ -17,28 +17,50 @@ const [JetPack, require] = (function() {
     /* Populate requirePaths with category entries */
     const catMan = Cc["@mozilla.org/categorymanager;1"]
                         .getService(Ci.nsICategoryManager);
-    let requirePaths = {};
-    let setRequirePaths = function() {
-        // Resolving things to ko.* via the custom resolver...
-        requirePaths["x-komodo-internal://"] = "x-komodo-internal://";
-        // Komodo API fallback...
-        requirePaths["ko/"] = "chrome://komodo/content/library/";
-        // Komodo API fallback...
-        requirePaths["contrib/"] = "chrome://komodo/content/contrib/commonjs/";
-        // Default path
-        requirePaths[''] = 'resource://gre/modules/commonjs/';
-
-        let entries = catMan.enumerateCategory('require-path');
-        while (entries.hasMoreElements()) {
-            let entry = entries.getNext().QueryInterface(Ci.nsISupportsCString);
-            let uri = catMan.getCategoryEntry('require-path', entry);
-            // Stringafy entry - in order to get the nice JS string functions.
-            entry = entry.toString();
-            if (entry && !entry.endsWith("/")) {
-                // Needs a trailing slash in order to map correctly.
-                entry += "/";
+    var requirePaths = {};
+    var setRequirePaths = function() {
+        
+        // Attempt to get the main komodo window to inherit require paths from it
+        var _window = window;
+        var wm = Cc["@mozilla.org/appshell/window-mediator;1"].getService(Ci.nsIWindowMediator);
+        let windows = wm.getEnumerator("Komodo");
+        while (windows.hasMoreElements()) {
+            let __window = windows.getNext().QueryInterface(Ci.nsIDOMWindow);
+            if ("require" in __window && __window.require) {
+                _window = __window;
             }
-            requirePaths[entry] = uri;
+        }
+        
+        if ("require" in _window && _window.require) {
+            // Inherit requirePaths
+            requirePaths = _window.require.getRequirePaths();
+        } else {
+            // Set requirePaths manually
+            
+            // Komodo API fallback...
+            requirePaths["ko/"] = "chrome://komodo/content/sdk/";
+            // Komodo API fallback...
+            requirePaths["contrib/"] = "chrome://komodo/content/contrib/commonjs/";
+            // Default path
+            requirePaths[''] = 'resource://gre/modules/commonjs/';
+            
+            Components.utils.import("resource://gre/modules/osfile.jsm")
+            var tmpPath = Cc["@mozilla.org/file/directory_service;1"]
+             .getService(Ci.nsIProperties).get("TmpD", Ci.nsIFile).path;
+            requirePaths['tmp'] = OS.Path.toFileURI(tmpPath);
+            
+            var entries = catMan.enumerateCategory('require-path');
+            while (entries.hasMoreElements()) {
+                let entry = entries.getNext().QueryInterface(Ci.nsISupportsCString);
+                let uri = catMan.getCategoryEntry('require-path', entry);
+                // Stringafy entry - in order to get the nice JS string functions.
+                entry = entry.toString();
+                if (entry && !entry.endsWith("/")) {
+                    // Needs a trailing slash in order to map correctly.
+                    entry += "/";
+                }
+                requirePaths[entry] = uri;
+            }
         }
     }
     setRequirePaths();
@@ -47,36 +69,13 @@ const [JetPack, require] = (function() {
     AddonManager.addInstallListener({onInstallEnded: setRequirePaths});
     // TODO: May need to reset "loader.modules" when the add-on is loaded?
 
-    var loader;
-    let my_resolve = function (id, requirer) {
-        if (id.startsWith("ko/") && !(id in loader.modules)) {
-            // Try to grab it off the global |ko| object...
-            let parts = id.split("/").slice(1);
-            let obj = ko;
-            while (obj && parts.length > 0) {
-                obj = obj[parts.shift()];
-            }
-            if (obj) {
-                // Got it off a global; map it to a fake URI
-                let url = "x-komodo-internal://" + id;
-                let resolvedURI = resolveURI(url, loader.mapping);
-                if (!(resolvedURI in loader.modules)) {
-                    // Module hasn't been loaded yet, give a reference to it
-                    loader.modules[resolvedURI] =
-                        {exports: Cu.getGlobalForObject(obj).Object.freeze(obj)};
-                }
-                return url;
-            }
-        }
-        // Can't resolve it to a global, try the normal path
-        return resolve(id, requirer);
-    };
-
     var globals = { ko: ko };
     if (String(this).contains("Window")) {
         // Have a window scope available
         globals.window = window;
         globals.document = document;
+        globals.setTimeout = window.setTimeout;
+        globals.clearTimeout = window.clearTimeout;
         if ("console" in window) {
             // Add the console when available too - some of the SDK depends on
             // this being defined.
@@ -88,11 +87,14 @@ const [JetPack, require] = (function() {
     }
 
     // Note that "paths" is required; _something_ needs to name the modules
-    loader = Loader({resolve: my_resolve,
-                     paths: requirePaths,
-                     globals: globals});
+    var loader = Loader({paths: requirePaths,
+                         globals: globals});
 
     const JetPack = {
+        // Keep handle to the JetPack ko namespace... as some tests require
+        // access to tweak this namespace.
+        ko: ko,
+
         defineLazyProperty: (object, property, id) => {
             const JetPack_LazyProperty = () => {
                 delete object[property];
@@ -137,6 +139,11 @@ const [JetPack, require] = (function() {
     };
 
     const require = function(id) {
+        if (id.indexOf("/") == -1) {
+            // Automatically resolve module namespaces
+            id = id + "/" + id;
+        }
+            
         try {
             let uri = resolveURI(id, loader.mapping)
             if (uri in loader.modules) {
@@ -164,6 +171,9 @@ const [JetPack, require] = (function() {
      * @param {String} path       The directory to which this prefix is mapped.
      */
     require.setRequirePath = function(namespace, path) {
+        if (namespace in requirePaths) return;
+        requirePaths[namespace] = path;
+        
         // Modify the loader mapping (a mapping of the paths) in place.
         //
         // We know the last item in the mapping is '' - so we cannot
@@ -179,6 +189,10 @@ const [JetPack, require] = (function() {
             throw new Error("setRequirePath didn't succeed in adding a mapping");
         }
     }
+    
+    require.getRequirePaths = function() {
+        return requirePaths;
+    }
 
     /**
      * Removes the namespace from the loader's list of require paths.
@@ -186,6 +200,10 @@ const [JetPack, require] = (function() {
      * @param {String} namespace  The prefix for the required path.
      */
     require.removeRequirePath = function(namespace) {
+        // The load.mapping will store the entries with a trailing slash.
+        if (!namespace.endsWith("/")) {
+            namespace += "/";
+        }
         for (var i=0; i < loader.mapping.length; i++) {
             if (loader.mapping[i][0] == namespace) {
                 loader.mapping.splice(i, 1);

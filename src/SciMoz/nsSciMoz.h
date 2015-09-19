@@ -120,6 +120,7 @@
 #ifdef XP_MACOSX
 #ifndef HEADLESS_SCIMOZ
 #include <Platform.h>
+#include <ScintillaView.h>
 #include <ScintillaCocoa.h>
 #endif
 #endif
@@ -211,6 +212,21 @@ typedef struct _PlatformInstance {
 #endif
 }
 PlatformInstance;
+
+/**
+ * Helper class to be used as timer target (NSTimer).
+ */
+@interface SciMozVisibilityTimer: NSObject
+{
+  void* mTimer;
+  void* mTarget;
+}
+- (id) init: (void*) target;
+- (void) startTimer;
+- (void) stopTimer;
+- (void) timerFired: (NSTimer*) timer;
+@end
+
 #endif
 
 #endif  // else not HEADLESS_SCIMOZ
@@ -225,11 +241,16 @@ class SciMoz : public ISciMoz,
                
 {
 private:
-    // Used to cache the "text" property - resets when the buffer changes.
-    bool _textHasChanged;
+    // Used to cache the "text" property - increments when the buffer changes.
+    int16_t _scimozId;
+    int16_t _textId;
     // Last line count gets updated whenever the text is changed.
     long mLastLineCount;
-    
+    // Setting for plugin visibility on Cocoa platform.
+    bool mPluginVisibilityHack;
+
+    void DefaultSettings();
+
     // brace match support
     long bracesStyle;
     long bracesCheck;
@@ -243,9 +264,9 @@ public:
   SciMoz();
 #endif
   SciMoz(SciMozPluginInstance* plugin);
-  virtual ~SciMoz();
 
 protected: 
+    virtual ~SciMoz();
     NPWindow* fWindow;
 //    nsPluginMode fMode;
     PlatformInstance fPlatform;
@@ -286,7 +307,7 @@ protected:
 	Scintilla::ScintillaCocoa *scintilla;
 #endif
 #endif
-#ifdef XP_PC
+#if defined(_WINDOWS) && !defined(HEADLESS_SCIMOZ)
     void LoadScintillaLibrary();
 #endif
 
@@ -323,6 +344,13 @@ public:
     // Notify that scimoz was closed.
     void PlatformMarkClosed(void);
 
+#ifdef XP_MACOSX
+#ifndef HEADLESS_SCIMOZ
+    SciMozVisibilityTimer *visibilityTimer;
+    void VisibilityTimerCallback(NSTimer *timer);
+#endif
+#endif
+
 #ifdef XP_MACOSX_USE_CORE_ANIMATION
     void *GetCoreAnimationLayer();
 #endif
@@ -357,6 +385,7 @@ public:
 
     NPRUNTIME_CUSTOM_METHOD(UpdateMarginWidths);
     NPRUNTIME_CUSTOM_METHOD(DoBraceMatch);
+    NPRUNTIME_CUSTOM_METHOD(EnablePluginVisibilityHack);
     NPRUNTIME_CUSTOM_METHOD(MarkClosed);
     NPRUNTIME_CUSTOM_METHOD(HookEvents);
     NPRUNTIME_CUSTOM_METHOD(UnhookEvents);
@@ -382,6 +411,7 @@ public:
     #undef NPRUNTIME_CUSTOM_METHOD
 protected:
   SciMozPluginInstance* mPlugin;
+  friend class SciMozPluginInstance;
 };
 
 #endif

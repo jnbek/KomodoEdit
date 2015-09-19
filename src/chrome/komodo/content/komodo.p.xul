@@ -70,8 +70,8 @@
         xmlns:html="http://www.w3.org/1999/xhtml"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        width="890"
-        height="650"
+        width="1150"
+        height="700"
         screenX="20"
         screenY="20"
         persist="screenX screenY width height"
@@ -172,7 +172,6 @@
     <script src="chrome://komodo/content/codeintel/codeintel.js"          type="application/x-javascript;version=1.7"/>
     <script src="chrome://komodo/content/library/eggs.js"                 type="application/x-javascript;version=1.7"/>
     <script src="chrome://komodo/content/library/abbrev.js"                 type="application/x-javascript;version=1.7"/>
-    <script src="chrome://komodo/content/library/multipleCaret.js"             type="application/x-javascript;version=1.7"/>
     <script src="chrome://komodo/content/library/snippets.js"                 type="application/x-javascript;version=1.7"/>
     <script src="chrome://komodo/content/library/ejs.js"                 type="application/x-javascript;version=1.7"/>
 
@@ -192,10 +191,10 @@
         </tooltip>
         <panel type="autocomplete" id="popupTextboxAutoComplete" noautofocus="true" crop="start"/>
 
-        <panel id="gotoLine_panel"
+        <panel id="gotoLine_panel" class="hud"
                onpopupshown="document.getElementById('gotoLine_textbox').focus(); document.getElementById('gotoLine_error_hbox').setAttribute('collapsed', 'true'); ">
             <vbox id="gotoLine_vbox" maxwidth="420">
-                <description id="gotoLine_description">&gotoLine.prompt.description;</description>
+                <!--<description id="gotoLine_description">&gotoLine.prompt.description;</description>-->
                 <hbox id="gotoLine_hbox" align="center">
                     <label id="gotoLine_label" class="desc" value="&gotoLine.prompt.label;" />
                     <textbox id="gotoLine_textbox"
@@ -255,8 +254,7 @@
                   observes="cmd_pasteHtml"
                   />
 
-        <menuseparator id="editor_context_select_separator"/>
-
+        <menuseparator id="editor_context_find_separator"/>
         <menu id="editor_context_select_menu"
               label="&select.menu.label;"
               accesskey="&select.menu.accesskey;">
@@ -276,27 +274,11 @@
                           accesskey="&selectToMatchingBrace.menu.accesskey;"
                           observes="cmd_selectToMatchingBrace"
                           />
-                <menuitem id="editor-context-addAdditionalCaret"
-                          label="&addAdditionalCaret.label;"
-                          observes="cmd_addAdditionalCaret"
-                          acceltext="&controlClick.accesskey;"/>
                 <menuitem id="editor-context-addNextWordToCaretSet"
                           label="&addNextWordToCaretSet.label;"
                           observes="cmd_addNextWordToCaretSet"/>
             </menupopup>
         </menu>
-
-        <menuseparator id="context-sep-paste"/>
-        <menuitem id="editor-context-makeSnippet"
-                label="&addAsSnippetInToolbox.label;"
-                observes="cmd_makeSnippetFromSelection"/>
-        <menuitem id="editor-go-to-definition"
-                label="&goToDefinition.label;"
-                observes="cmd_goToDefinition"/>
-        <menuitem id="editor-jump-corresponding"
-                label="&jumpToCorrespondingLine.label;"
-                class="menuitem-iconic reveal-in-editor-icon"
-                observes="cmd_jumpToCorrespondingLine"/>
         <menuitem id="editor-context-find"
                 label="&find.label;"
                 observes="cmd_find"
@@ -307,29 +289,15 @@
                 observes="cmd_replace"
                 class="menuitem-iconic"
                 />
-        <menuitem id="editor-context-rename-tag"
-                label="&renameTag.label;"
-                observes="cmd_rename_tag"
-                class="menuitem-iconic"
-                />
-        <menuitem label="&toggleBookmark.label;"
-                id="menu_bookmarkToggle"
-                observes="cmd_bookmarkToggle"/>
-        <menuseparator id="context-sep-debug"/>
-        <menuitem id="menu_showUnsavedChanges"
-                  label="&showUnsavedChanges.label;"
-                  observes="cmd_showUnsavedChanges"/>
-        <menuseparator/>
-        <menuitem id="menu_refreshStatus2"
-                label="&refreshStatus.label;"
-                observes="cmd_refreshStatus"/>
+        <!-- Todo: Fix double separator (here for compatibility with IDE) -->
+        <menuseparator id="editor_context_select_separator"/>
+        <menuitem id="editor-go-to-definition"
+                label="&goToDefinition.label;"
+                observes="cmd_goToDefinition"/>
         <menuseparator id="editor-context-sep-extensions"/>
-        <!-- Note: two separators in a row is okay because we always expect
-             to have at least one user of this space (the spell checker). -->
-        <menuseparator id="editor-context-sep-properties"/>
-        <menuitem id="editor-context-properties"
-                label="&filePreferences.label;"
-                observes="cmd_editPrefsCurrent"/>
+        <menuitem id="editor-context-makeSnippet"
+                label="&addAsSnippetInToolbox.label;"
+                observes="cmd_makeSnippetFromSelection"/>
     </menupopup>
 
     <menupopup id="minimapContextMenu"
@@ -368,80 +336,78 @@
                   observes="cmd_bufferCloseOthers"
                   accesskey="&menuCloseOtherBuffers.accesskey;"
                   label="&menuCloseOtherBuffers.label;"/>
-        <menuitem id="menu_movetab"
-                    observes="cmd_movetab"
-                    label="&moveToOtherTabGroup.label;"/>
-        <menuitem id="menu_openTabInNewWindow"
-                    observes="cmd_openTabInNewWindow"
-                    label="&openTabInNewWindow.label;"/>
-        <menuitem id="menu_moveTabToNewWindow"
-                    observes="cmd_moveTabToNewWindow"
-                    label="&moveTabToNewWindow.label;"/>
-        <menuitem id="menu_splittab"
-                    observes="cmd_splittab"
-                    label="&splitView.label;"/>
 
         <menuseparator id="tabContextMenu_separator_1" />
 
-        <menuitem id="menu_save2"
-                  observes="cmd_save"
-                  label="&save.label;"/>
-        <menuitem label="&saveAsDotDotDot.label;"
-                  id="menu_saveAs2"
-                  observes="cmd_saveAs"
-                  accesskey="&menuSaveAs.accesskey;"
-                  />
-        <menu id="menu_saveAsSubMenu"
-              accesskey="&menuSaveAsOther.accesskey;"
-              label="&saveAsOther.label;">
-            <menupopup id="menu_saveAsSubPopup">
-                <menuitem id="menu_saveAs_remote2"
-                    observes="cmd_saveAs_remote"
-                    label="&remoteFile.label;"/>
-                <menuitem id="menu_saveAsTemplate2"
-                    observes="cmd_saveAsTemplate"
-                    label="&template.label;"/>
+        <menu id="menu_tab_placement"
+                label="&tabPlacement.label;">
+            <menupopup>
+                <menuitem id="menu_movetab"
+                            observes="cmd_movetab"
+                            label="&moveToOtherTabGroup.label;"/>
+                <menuitem id="menu_openTabInNewWindow"
+                            observes="cmd_openTabInNewWindow"
+                            label="&openTabInNewWindow.label;"/>
+                <menuitem id="menu_moveTabToNewWindow"
+                            observes="cmd_moveTabToNewWindow"
+                            label="&moveTabToNewWindow.label;"/>
+                <menuitem id="menu_splittab"
+                            observes="cmd_splittab"
+                            label="&splitView.label;"/>
+            </menupopup>
+        </menu>
+        <menu id="menu_tab_actions"
+                label="&tabFileActions.label;">
+            <menupopup id="menu_tab_actions_popup">
+
+                <menuitem id="menu_save2"
+                          observes="cmd_save"
+                          label="&save.label;"/>
+                <menuitem label="&saveAsDotDotDot.label;"
+                          id="menu_saveAs2"
+                          observes="cmd_saveAs"
+                          accesskey="&menuSaveAs.accesskey;"
+                          />
+                <menu id="menu_saveAsSubMenu"
+                      accesskey="&menuSaveAsOther.accesskey;"
+                      label="&saveAsOther.label;">
+                    <menupopup id="menu_saveAsSubPopup">
+                        <menuitem id="menu_saveAs_remote2"
+                            observes="cmd_saveAs_remote"
+                            label="&remoteFile.label;"/>
+                        <menuitem id="menu_saveAsTemplate2"
+                            observes="cmd_saveAsTemplate"
+                            label="&template.label;"/>
+                    </menupopup>
+                </menu>
+                <menuitem id="menu_showUnsavedChanges2"
+                          label="&showUnsavedChanges.label;"
+                          observes="cmd_showUnsavedChanges"/>
+                <menuitem id="menu_tab_revert"
+                          label="&revert.label;"
+                          accesskey="&menuRevert.accesskey;"
+                          observes="cmd_revert"
+                          />
+
+                <menuseparator id="tabContextMenu_separator_file_action_changes" />
+
+                <menuseparator id="tabContextMenu_separator_advanced" />
+
+                <menuitem id="buffertab-context-mapuri"
+                          label="&createMappedURI.label;"
+                          observes="cmd_createMappedURI"/>
             </menupopup>
         </menu>
 
-        <menuitem id="menu_showUnsavedChanges2"
-                  label="&showUnsavedChanges.label;"
-                  observes="cmd_showUnsavedChanges"/>
-        <menuitem id="menu_tab_revert"
-                  label="&revert.label;"
-                  accesskey="&menuRevert.accesskey;"
-                  observes="cmd_revert"
-                  />
-
-        <menuseparator id="tabContextMenu_separator_2" />
+        <menuseparator id="buffertab-context-sep-properties"/>
 
         <menuitem id="menu_refreshStatus3"
                   label="&refreshStatus.label;"
                   observes="cmd_refreshStatus"/>
 
-        <menuseparator id="buffertab-context-sep-properties"/>
-
-        <menuitem id="buffertab-context-mapuri"
-                  label="&createMappedURI.label;"
-                  observes="cmd_createMappedURI"/>
         <menuitem id="buffertab-context-properties"
                   label="&filePreferences.label;"
                   observes="cmd_editPrefsCurrent"/>
-    </menupopup>
-
-    <!-- Popup for clicking on the Start Page *tab* -->
-    <menupopup id="startpageTabContextMenu">
-        <menuitem id="menu_startpage_tabcontextmenu_bufferClose"
-                  label="&close.label;"
-                  accesskey="&menuBufferClose.accesskey;"
-                  observes="cmd_bufferClose"/>
-        <menuitem id="menu_startpage_tabcontextmenu_bufferCloseOthers"
-                  observes="cmd_bufferCloseOthers"
-                  accesskey="&menuCloseOtherBuffers.accesskey;"
-                  label="&menuCloseOtherBuffers.label;"/>
-        <menuitem id="menu_startpage_tabcontextmenu_movetab"
-                  observes="cmd_movetab"
-                  label="&moveToOtherTabGroup.label;"/>
     </menupopup>
 
 <!-- Popup for clicking on the buffer windows -->
@@ -490,6 +456,8 @@
              mode="icons"
              class="chromeclass-toolbar toolbox-top">
         <toolbar id="toolbar-menubar"
+                 type="menubar"
+                 autohide="true"
                  fullscreentoolbar="true"
                  customizable="false">
             <toolbaritem id="menubar-items"
@@ -794,10 +762,6 @@
                                               accesskey="&selectToMatchingBrace.menu.accesskey;"
                                               observes="cmd_selectToMatchingBrace"
                                               />
-                                    <menuitem label="&addAdditionalCaret.label;"
-                                              id="menu_addAdditionalCaret"
-                                              observes="cmd_addAdditionalCaret"
-                                              />
                                     <menuitem label="&addNextWordToCaretSet.label;"
                                               id="menu_addNextWordToCaretSet"
                                               observes="cmd_addNextWordToCaretSet"
@@ -1008,30 +972,8 @@
                                       observes="cmd_historyForward"
                                       />
 
-                            <menuseparator id="naviation_menupopup_separator_1"/>
 
-                            <menuitem
-                                id="menu_bufferNext"
-                                label="&nextFile.label;"
-                                accesskey="&menuBufferNext.accesskey;"
-                                class="menuitem-iconic next-buffer-icon"
-                                observes="cmd_bufferNext"
-                            />
-                            <menuitem
-                                id="menu_bufferPrevious"
-                                label="&previousFile.label;"
-                                accesskey="&menuBufferPrevious.accesskey;"
-                                class="menuitem-iconic previous-buffer-icon"
-                                observes="cmd_bufferPrevious"
-                            />
-                            <menu id="goToTab_menu"
-                                  label="&goToTab.menu.label;"
-                                  accesskey="&goToTab.menu.accesskey;">
-                                <menupopup id="goToTab_menupopup"
-                                           onpopupshowing="ko.uilayout.updateWindowList(this);" />
-                            </menu>
-
-                            <menuseparator id="naviation_menupopup_separator_2"/>
+                            <menuseparator id="naviation_menupopup_separator_editor_nav"/>
 
                             <menuitem label="&gotoLine.label;"
                                       id="menu_gotoLine"
@@ -1123,9 +1065,7 @@
 <!-- #if PLATFORM != "darwin" -->
                                     <menuitem label="&showMenubar.label;"
                                               id="menu_toggleMenubar"
-                                              observes="cmd_toggleMenubar"
-                                              checked="true"
-                                              persist="checked"
+                                              command="cmd_toggleMenubar"
                                               type="checkbox"
                                               />
 <!-- #endif -->
@@ -1171,20 +1111,6 @@
                                               checked="true"
                                               type="checkbox"
                                               />
-                                    <menuitem label="&findInFilesToolbar.label;"
-                                              id="menu_viewfindtoolbar"
-                                              observes="cmd_viewfindtoolbar"
-                                              persist="checked"
-                                              checked="true"
-                                              type="checkbox"
-                                              />
-                                    <menuitem label="&openFileToolbar.label;"
-                                              id="menu_viewopentoolbar"
-                                              observes="cmd_viewopentoolbar"
-                                              persist="checked"
-                                              checked="false"
-                                              type="checkbox"
-                                              />
                                     <menuitem label="&macro.label;"
                                               id="menu_viewmacrotoolbar"
                                               observes="cmd_viewmacrotoolbar"
@@ -1197,6 +1123,13 @@
                                               observes="cmd_viewkomodotoolbar"
                                               persist="checked"
                                               checked="false"
+                                              type="checkbox"
+                                              />
+                                    <menuitem label="&findInFilesToolbar.label;"
+                                              id="menu_viewfindtoolbar"
+                                              observes="cmd_viewfindtoolbar"
+                                              persist="checked"
+                                              checked="true"
                                               type="checkbox"
                                               />
                                     <menuseparator id="popup_toolbars_custom_separator"
@@ -1215,12 +1148,6 @@
                                     <!-- #endif -->
                                 </menupopup>
                             </menu>
-                            <menuitem
-                                id="menu_openStartPage"
-                                label="&startPage.label;"
-                                observes="cmd_openStartPage"
-                                accesskey="&menuOpenStartPage.accesskey;"
-                                />
                             <menuitem id="menu_previewInBrowser"
                                       label="&browserPreview.menu.label;"
                                       accesskey="&browserPreview.menu.accesskey;"
@@ -1350,10 +1277,13 @@
                                       id="menu_openProject"
                                       observes="cmd_openProject"
                                       />
+                            <!-- Disabled because opening in new windows is broken
+                                 https://bugs.activestate.com/show_bug.cgi?id=106356
                             <menuitem label="&openProjectInNewWindow.label;"
                                       id="menu_projectOpenProject"
                                       observes="cmd_openProjectNewWindow"
                                       />
+                            -->
 <!--   XXX Implement this
                             <menuitem label="&openRemoteProject.label;"
                                       id="menu_projectOpenRemoteProject"
@@ -1366,6 +1296,11 @@
                                 <menupopup id="recentProjects_menupopup"
                                            onpopupshowing="ko.uilayout.updateMRUMenuIfNecessary('project', 5);"/>
                             </menu>
+                            
+                            <menuitem label="&sampleProject.label;"
+                                      id="menu_sampleProject"
+                                      observes="cmd_sampleProject"
+                                      />
 
                             <menuseparator id="menu_project_separator_1"/>
 
@@ -1630,11 +1565,16 @@
                                 accesskey="&menuHelpShowKeybindings.accesskey;"
                                 oncommand="ko.browse.showKeybindings()"
                                 />
+                            <menuitem
+                                id="menu_helpCheckConfig"
+                                label="&checkConfig.label;"
+                                oncommand="window.openDialog('chrome://komodo/content/dialogs/featureControlPanel.xul','Komodo:FeatureControlPanel','chrome,titlebar')"
+                                />
                             <menuseparator/>
                             <menuitem
                                 id="menu_tryKomodoIDE"
                                 label="&tryKomodoIDE.label;"
-                                oncommand="ko.browse.openUrlInDefaultBrowser('http://www.activestate.com/komodo/downloads/');"
+                                oncommand="ko.browse.openUrlInDefaultBrowser('http://komodoide.com/download/');"
                             />
                             <menuseparator id="support_separator"/>
                             <menu
@@ -1662,11 +1602,39 @@
                                         tooltiptext="&komodoBugDatabase.tooltiptext;"
                                         observes="cmd_helpViewBugs"
                                         />
+                                    <menuseparator/>
                                     <menuitem
-                                        id="troubleshootingContactUsMenuItem"
-                                        accesskey="&helpTroubleshootingContactUs.accesskey;"
-                                        label="&helpTroubleshootingContactUs.label;"
-                                        observes="cmd_helpContactUs"
+                                        label="Restart in Safe-Mode"
+                                        oncommand="ko.main.restartWithFlag('tempProfile')"
+                                    />
+                                    <menuitem
+                                        label="Restart Without Addons"
+                                        oncommand="ko.main.restartWithFlag('tempNoAddons')"
+                                    />
+                                    <menuitem
+                                        label="Restart Without Tools"
+                                        oncommand="ko.main.restartWithFlag('tempNoToolbox')"
+                                    />
+                                    <menuseparator/>
+                                    <menuitem
+                                        label="Reset Everything"
+                                        oncommand="ko.main.restartWithFlag('cleanProfile')"
+                                    />
+                                    <menuitem
+                                        label="Reset File Preferences"
+                                        oncommand="ko.main.restartWithFlag('cleanDocState')"
+                                    />
+                                    <menuitem
+                                        label="Reset UI Setup"
+                                        oncommand="ko.main.restartWithFlag('cleanViewState')"
+                                    />
+                                    <menuitem
+                                        label="Reset CodeIntel Database"
+                                        oncommand="ko.main.restartWithFlag('cleanCodeintel')"
+                                    />
+                                    <menuitem
+                                        label="Reset Caches"
+                                        oncommand="ko.main.restartWithFlag('cleanCaches')"
                                     />
                                 </menupopup>
                             </menu>
@@ -1946,7 +1914,6 @@
                          grippyhidden="true"
                          customizable="true"
                          align="center"
-                         kohidden="true"
                          mode="icons"
                          persist="kohidden collapsed buttonstyle mode"
                          buttonstyle="pictures"
@@ -1958,13 +1925,14 @@
                                 label="&macroNew.toolbar.label;"
                                 tooltiptext="&macroNew.tooltiptext;"
                                 class="macro-new-icon"
+                                kohidden="true"
                                 buttonstyle="pictures"
-                                persist="buttonstyle"
+                                persist="buttonstyle kohidden"
                                 observes="cmd_macroNew"/>
                         <toolbarbutton id="macroRecord"
                                 label="&record.label;"
                                 tooltiptext="&recordMacro.tooltiptext;"
-                                persist="buttonstyle"
+                                persist="buttonstyle kohidden"
                                 class="macro-record-icon"
                                 buttonstyle="pictures"
                                 observes="cmd_startMacroMode"/>
@@ -1974,25 +1942,26 @@
                                 persist="buttonstyle"
                                 buttonstyle="pictures"
                                 class="macro-pause-icon"
+                                kohidden="true"
                                 observes="cmd_pauseMacroMode"/>
                         <toolbarbutton id="macroStop"
                                 label="&stop.label;"
                                 tooltiptext="&stopRecordingMacro.tooltiptext;"
-                                persist="buttonstyle"
+                                persist="buttonstyle kohidden"
                                 class="macro-stop-icon"
                                 buttonstyle="pictures"
                                 observes="cmd_stopMacroMode"/>
                         <toolbarbutton id="macroPlay"
                                 label="&runLast.label;"
                                 tooltiptext="&playLastMacro.tooltiptext;"
-                                persist="buttonstyle"
+                                persist="buttonstyle kohidden"
                                 buttonstyle="pictures"
                                 class="macro-play-icon"
                                 observes="cmd_executeLastMacro"/>
                         <toolbarbutton id="macroSave"
                                 label="&save.label;"
                                 tooltiptext="&saveLastMacroToToolbox.tooltiptext;"
-                                persist="buttonstyle"
+                                persist="buttonstyle kohidden"
                                 class="macro-save-icon"
                                 buttonstyle="pictures"
                                 observes="cmd_saveMacroToToolbox"/>
@@ -2042,50 +2011,13 @@
                 </toolbar>
             </toolboxrow>
 
-            <toolbar id="openToolbar"
-                     align="end"
-                     valign="middle"
-                     broadcaster="cmd_viewopentoolbar"
-                     mode="icons"
-                     kohidden="true"
-                     persist="kohidden collapsed buttonstyle mode"
-                     tooltiptext="&openFileToolbar.label;"
-                    >
-                <hbox class="unified-textbox-wrapper">
-
-                    <textbox id="textbox_open"
-                         tooltiptext="&openFile.tooltiptext;"
-                         placeholder="&openFile.placeholder;"
-                         type="autocomplete"
-                         style="min-height: 16px;"
-                         class="search-box-open-icon"
-                         flex="1"
-                         maxrows="10"
-                         size="30"
-                         onfocus="this.searchParam = ko.window.getCwd();
-                                  event.currentTarget.parentNode.classList.add('focus')
-                                  "
-                         onblur="event.currentTarget.parentNode.classList.remove('focus')"
-                         onmousedown="this.searchParam = ko.window.getCwd();"
-                         autocompletesearch="filepath"
-                         autocompletepopup="popupTextboxAutoComplete"
-                         enablehistory="true"
-                         tabscrolling="true"
-                         completeselectedindex="true"
-                         ontextentered="this.focus();
-                                        this.setSelectionRange(this.textLength, this.textLength);"
-                         onkeypress="ko.findtoolbar.openTextboxKeyPress(this, event);"
-                        accesskey="&openLabel.accesskey;"/>
-
-                </hbox>
-            </toolbar>
-
             <toolbar id="findToolbar"
                      align="end"
                      valign="middle"
                      broadcaster="cmd_viewfindtoolbar"
                      mode="icons"
                      persist="kohidden collapsed buttonstyle mode"
+                     kohidden="true"
                      tooltiptext="&findInFilesToolbar.label;"
                     >
                 <hbox class="unified-textbox-wrapper">
@@ -2150,11 +2082,12 @@
                 buttonstyle="pictures"
                 collapsed="true"
             >
-                <menupopup>
-                    <hbox>
+                <menupopup id="unifiedMenuPopup">
+                    <hbox id="unifiedMenuPopupHbox">
                         <vbox id="unifiedMenuPrimaryPane"/>
                         <vbox id="unifiedMenuSecondaryPane">
-                            <menuseparator id="unifiedMenuMruSeparator" ordinal="9999"/>
+                            <menuseparator id="unifiedMenuMruSeparator" ordinal="9999" preserve="true"/>
+                            <vbox id="unifiedMenuMru" preserve="true" ordinal="9999"></vbox>
                         </vbox>
                     </hbox>
                 </menupopup>
@@ -2183,7 +2116,6 @@
                      pref="ui.tabs.sidepanes.left.layout"
                      label="&paneNameLeft;"
                      orient="vertical"
-                     collapsed="true"
                      persist="width type">
             </ko-pane>
             <splitter id="workspace_left_splitter"
@@ -2193,27 +2125,317 @@
                       splitterCmdId="cmd_viewLeftPane">
                 <observes element="workspace_left_area" attribute="collapsed"/>
             </splitter>
-            <deck id="editorviewbox" flex="1" class="blank-workspace">
-                <vbox id="editorvbox">
-                    <view id="topview"
-                          type="multiview"
-                          orient="vertical"
-                          persist="orient"
-                          flex="1"/>
+            <vbox id="komodo-editor-vbox" flex="1">
+                <vbox id="komodo-editor-vbox-inner" flex="1">
+                    <deck id="editorviewbox" flex="1" class="blank-workspace">
+                        <vbox id="editorvbox">
+                            <view id="topview"
+                                  type="multiview"
+                                  orient="vertical"
+                                  persist="orient"
+                                  flex="1"/>
+                        </vbox>
+                        <!-- This is used for capturing user input while slow dialogs
+                        (e.g. the find dialog) load. -->
+                        <textbox id="hidden-input-buffer" collapsed="true"
+                             onfocus="ko.inputBuffer.focus(event);"/>
+                        <vbox id="customizingPlaceHolder" align="center" valign="middle">
+                            <!-- This box is used in the widget/pane customization mode
+                               - (hiding the main text editing area).
+                               -->
+                            <description>&pane.customize.placeholder.label;</description>
+                            <button label="&pane.customize.done.label;"
+                                    oncommand="ko.uilayout._customizeComplete(true);"/>
+                        </vbox>
+                        <vbox id="quicklaunch" pack="center" class="hud">
+                            <vbox pack="center" align="center" flex="1" class="inner">
+
+                                <button label="New File"
+                                        class="new-file-icon"
+                                        oncommand="ko.commands.doCommandAsync('cmd_new', event)"/>
+
+                                <button label="New File from Template"
+                                        class="new-template-icon"
+                                        oncommand="ko.commands.doCommandAsync('cmd_newTemplate', event)"/>
+
+                                <button label="New Project"
+                                        class="project-icon"
+                                        oncommand="ko.commands.doCommandAsync('cmd_newProject', event)"/>
+
+                                <hbox height="15"/>
+
+                                <button label="Open File"
+                                        class="open-file-icon"
+                                        type="menu-button"
+                                        oncommand="ko.commands.doCommandAsync('cmd_open', event)">
+                                    <menupopup
+                                        id="popup_mruFilesQL"
+                                        class="popup_mru"
+                                        position="after_end"
+                                        onpopupshowing="ko.uilayout.updateMRUMenuIfNecessary('file',0,'popup_mruFilesQL', true);"/>
+                                </button>
+
+                                <button label="Open Project"
+                                        class="project-icon"
+                                        type="menu-button"
+                                        oncommand="ko.commands.doCommandAsync('cmd_openProject', event)">
+                                  <menupopup
+                                        id="popup_mruProjectsQL"
+                                        class="popup_mru"
+                                        position="after_end"
+                                        onpopupshowing="ko.uilayout.updateMRUMenuIfNecessary('project',0,'popup_mruProjectsQL', true);"/>
+                                </button>
+                                
+                                <hbox height="15"/>
+
+                                <button label="Preferences"
+                                        class="preferences-icon"
+                                        oncommand="ko.commands.doCommandAsync('cmd_editPrefs', event)"/>
+                                
+                                <button label="Install Packages"
+                                        class="packages-icon"
+                                        type="menu-button"
+                                        oncommand="require('commando').show('scope-packages')">
+                                    <menupopup position="after_end">
+                                        <menuitem
+                                            label="Install Addons"
+                                            oncommand="require('scope-packages/packages').openCategory('addons')"
+                                                 />
+                                        <menuitem
+                                            label="Install Macros"
+                                            oncommand="require('scope-packages/packages').openCategory('macros')"
+                                                 />
+                                        <menuitem
+                                            label="Install Toolbox Items"
+                                            oncommand="require('scope-packages/packages').openCategory('toolbox')"
+                                                 />
+                                        <menuitem
+                                            label="Install Color Schemes"
+                                            oncommand="require('scope-packages/packages').openCategory('schemes')"
+                                                 />
+                                        <menuitem
+                                            label="Install Skins"
+                                            oncommand="require('scope-packages/packages').openCategory('skins')"
+                                                 />
+                                        <menuitem
+                                            label="Install Languages"
+                                            oncommand="require('scope-packages/packages').openCategory('languages')"
+                                                 />
+                                        <menuitem
+                                            label="Install Keybindings"
+                                            oncommand="require('scope-packages/packages').openCategory('keybinds')"
+                                                 />
+                                    </menupopup>
+                                </button>
+
+                                <button label="Customize Panes"
+                                        class="customize-panes-icon"
+                                        oncommand="ko.uilayout.customize()"/>
+
+                            </vbox>
+                            <hbox align="end" pack="end" class="footer">
+                                <button label="Troubleshooting"
+                                        class="help-icon"
+                                        type="menu">
+                                    <menupopup position="before_end">
+                                        <menuitem
+                                            label="Restart in Safe-Mode"
+                                            oncommand="ko.main.restartWithFlag('tempProfile')"
+                                        />
+                                        <menuitem
+                                            label="Restart Without Addons"
+                                            oncommand="ko.main.restartWithFlag('tempNoAddons')"
+                                        />
+                                        <menuitem
+                                            label="Restart Without Tools"
+                                            oncommand="ko.main.restartWithFlag('tempNoToolbox')"
+                                        />
+                                        <menuseparator/>
+                                        <menuitem
+                                            label="Reset Everything"
+                                            oncommand="ko.main.restartWithFlag('cleanProfile')"
+                                        />
+                                        <menuitem
+                                            label="Reset File Preferences"
+                                            oncommand="ko.main.restartWithFlag('cleanDocState')"
+                                        />
+                                        <menuitem
+                                            label="Reset UI Setup"
+                                            oncommand="ko.main.restartWithFlag('cleanViewState')"
+                                        />
+                                        <menuitem
+                                            label="Reset CodeIntel Database"
+                                            oncommand="ko.main.restartWithFlag('cleanCodeintel')"
+                                        />
+                                        <menuitem
+                                            label="Reset Caches"
+                                            oncommand="ko.main.restartWithFlag('cleanCaches')"
+                                        />
+                                        <menuseparator/>
+                                        <menuitem
+                                            id="troubleshootingQLViewErrorLogMenuItem"
+                                            accesskey="&helpTroubleshootingViewErrorLog.accesskey;"
+                                            label="&helpTroubleshootingViewErrorLog.label;"
+                                            observes="cmd_helpViewErrorLog"
+                                        />
+                                        <menuitem
+                                            id="troubleshootingQLAboutMemory"
+                                            accesskey="&helpTroubleshootingAboutMemory.accesskey;"
+                                            label="&helpTroubleshootingAboutMemory.label;"
+                                            observes="cmd_komodoMemoryUsage"
+                                        />
+                                        <menuitem
+                                            id="troubleshootingQLViewBugsMenuItem"
+                                            accesskey="&komodoBugDatabase.accesskey;"
+                                            label="&komodoBugDatabase.label;"
+                                            tooltiptext="&komodoBugDatabase.tooltiptext;"
+                                            observes="cmd_helpViewBugs"
+                                            />
+                                    </menupopup>
+                                </button>
+                                <button label="&komodoBugDatabase.label;"
+                                        class="bug-icon"
+                                        observes="cmd_helpViewBugs"/>
+                            </hbox>
+                        </vbox>
+                    </deck>
+                    
+                    <hbox id="findReplaceWrap" height="200" collapsed="true">
+                        <browser id="findReplaceBrowser" type="chrome" flex="1"/>
+                    </hbox>
+
+                    <statusbar fullscreentoolbar="true" orient="horizontal"
+                               id="statusbarviewbox"
+                               class="chromeclass-status"
+                               style="min-height: 1.5em;">
+                        <html:canvas id="canvas-proxy" style="display: none"/>
+
+                        <statusbarpanel id="statusbar-message-panel" flex="1">
+                            <!-- the deck is here to support vi mode -->
+                            <deck id="statusbar-message-deck" selectedIndex="0" flex="1">
+                                <hbox id="statusbar-message-deck-default">
+                                </hbox>
+                            </deck>
+                        </statusbarpanel>
+
+                        <statusbarpanel id="statusbar-encoding"
+                                        tooltiptext="&fileEncoding.tooltiptext;"
+                                        >
+                            <toolbarbutton class="statusbar-label"
+                                  id="statusbar-encoding-label"
+                                  flex="1"
+                                  orient="horizontal"
+                                  type="menu"
+                                  persist="buttonstyle"
+                                  label="--"
+                                  buttonstyle="text">
+                                <menupopup id="statusbar-encoding-menupopup"
+                                           onpopupshowing="ko.statusBar.setupEncodingMenu(this);" />
+                            </toolbarbutton>
+                        </statusbarpanel>
+
+                        <statusbarpanel id="statusbar-language"
+                                        pack="end"
+                                        >
+                            <toolbarbutton class="statusbar-label languageicon"
+                                  id="statusbar-language-menu"
+                                  tooltiptext="&fileType.tooltiptext;"
+                                  flex="1"
+                                  orient="horizontal"
+                                  type="menu"
+                                  persist="buttonstyle"
+                                  label="--"
+                                  buttonstyle="text">
+                                <menupopup id="statusbar-filetype-menu"
+                                           position="before_end"
+                                           onpopupshowing="ko.uilayout.updateViewAsLanguageMenu(this);" />
+                            </toolbarbutton>
+                        </statusbarpanel>
+
+                        <statusbarpanel id="statusbar-line-col"
+                                        tooltiptext="&filePosition.tooltiptext;"
+                                        style="min-width: 10.5em;"/>
+                        <statusbarpanel id="statusbar-selection"
+                                        label="&noSelection.label;"
+                                        tooltiptext="&selectionInformation.tooltiptext;"
+                                        style="min-width: 8em;"/>
+
+                        <statusbarpanel id="statusbar-checker"
+                                        style="min-width: 36px;">
+                            <toolbarbutton id="statusbar-check"
+                                           tooltiptext="&syntaxCheckingStatus.tooltiptext;"
+                                           orient="horizontal"
+                                           type="menu"
+                                           persist="buttonstyle"
+                                           buttonstyle="pictures"
+                                           onclick="if (event.button == 2)
+                                            ko.lint.jumpToNextLintResult();">
+                                <menupopup id="context_lint" position="before_start">
+                                    <menuitem id="context_doLint"
+                                              class="statusbar-label"
+                                              label="&checkSyntaxNow.label;"
+                                              observes="cmd_lintNow"
+                                              />
+                                    <menuitem id="context_describeResults"
+                                              class="statusbar-label"
+                                              label="&jumpToNextResult.label;"
+                                              observes="cmd_nextLintResult"
+                                              />
+                                    <menuitem id="context_clearResults"
+                                              class="statusbar-label"
+                                              label="&clearWarningErrorSquigglies.label;"
+                                              observes="cmd_lintClearResults"
+                                              />
+                                </menupopup>
+                            </toolbarbutton>
+                        </statusbarpanel>
+
+                        <statusbarpanel id="statusbar-throbber">
+                            <box id="statusbar-throbber-inner"></box>
+                        </statusbarpanel>
+
+                    </statusbar>
                 </vbox>
-                <!-- This is used for capturing user input while slow dialogs
-                (e.g. the find dialog) load. -->
-                <textbox id="hidden-input-buffer" collapsed="true"
-                     onfocus="ko.inputBuffer.focus(event);"/>
-                <vbox id="customizingPlaceHolder" align="center" valign="middle">
-                    <!-- This box is used in the widget/pane customization mode
-                       - (hiding the main text editing area).
-                       -->
-                    <description>&pane.customize.placeholder.label;</description>
-                    <button label="&pane.customize.done.label;"
-                            oncommand="ko.uilayout._customizeComplete(true);"/>
-                </vbox>
-            </deck>
+
+                <splitter id="bottom_splitter"
+                          collapse="after"
+                          splitterCmdId="cmd_viewBottomPane"
+                          class="workspace_splitter"
+                          orient="vertical">
+                    <observes element="workspace_bottom_area" attribute="collapsed"/>
+                </splitter>
+
+                <!-- Output Area -->
+                <!--Persisting of collapsed disabled because of http://bugs.activestate.com/show_bug.cgi?id=25918-->
+                <ko-pane id="workspace_bottom_area" height="200" collapsed="true"
+                         persist="height type" label="&paneNameBottom;"
+                         class="native" orient="horizontal">
+                    <!-- Run output tab of the output pane. This pane is made
+                        of two levels: (1) a scintilla terminal to show
+                        unparsed output and (2) an tree to show parsed
+                        output.
+                    -->
+                    <browser type="ko-widget"
+                             id="runoutput-desc-tabpanel"
+                             label="&commandOutput.label;"
+                             src="chrome://komodo/content/run/runOutputPane.xul"
+                             tab_onmousedown="document.getElementById('runoutput-desc-tabpanel').focus();"
+                             tab_onfocus="document.getElementById('runoutput-desc-tabpanel').focus();"
+                             icon="koicon://ko-svg/chrome/icomoon/skin/console.svg"/>
+
+                    <!-- The two Find Results tabs of the output pane -->
+                    <browser type="ko-widget"
+                             id="findresults1_tabpanel"
+                             collapsed="true" label="&findResults1.label;"
+                             src="chrome://komodo/content/find/findResultsTab.xul"
+                             icon="koicon://ko-svg/chrome/icomoon/skin/binoculars.svg"/>
+                    <browser type="ko-widget"
+                             id="findresults2_tabpanel"
+                             collapsed="true" label="&findResults2.label;"
+                             src="chrome://komodo/content/find/findResultsTab.xul"
+                             icon="koicon://ko-svg/chrome/icomoon/skin/binoculars.svg"/>
+                </ko-pane>
+            </vbox>
             <splitter id="workspace_right_splitter"
                       orient="horizontal"
                       class="workspace_splitter workspace_splitter_right"
@@ -2234,48 +2456,10 @@
                          label="&toolbox2.label;"
                          locktip="&thisToolboxIsReadOnly.locktip;"
                          src="chrome://komodo/content/toolbox/toolboxPanel.xul"
-                         icon="chrome://icomoon/skin/icons/briefcase3.png"/>
+                         icon="koicon://ko-svg/chrome/icomoon/skin/briefcase3.svg"/>
             </ko-pane>
         </hbox>
 
-        <splitter id="bottom_splitter"
-                  collapse="after"
-                  splitterCmdId="cmd_viewBottomPane"
-                  class="workspace_splitter"
-                  orient="vertical">
-            <observes element="workspace_bottom_area" attribute="collapsed"/>
-        </splitter>
-
-        <!-- Output Area -->
-        <!--Persisting of collapsed disabled because of http://bugs.activestate.com/show_bug.cgi?id=25918-->
-        <ko-pane id="workspace_bottom_area" height="200" collapsed="true"
-                 persist="height type" label="&paneNameBottom;"
-                 class="native" orient="horizontal">
-            <!-- Run output tab of the output pane. This pane is made
-                of two levels: (1) a scintilla terminal to show
-                unparsed output and (2) an tree to show parsed
-                output.
-            -->
-            <browser type="ko-widget"
-                     id="runoutput-desc-tabpanel"
-                     label="&commandOutput.label;"
-                     src="chrome://komodo/content/run/runOutputPane.xul"
-                     tab_onmousedown="document.getElementById('runoutput-desc-tabpanel').focus();"
-                     tab_onfocus="document.getElementById('runoutput-desc-tabpanel').focus();"
-                     icon="chrome://icomoon/skin/icons/console.png"/>
-
-            <!-- The two Find Results tabs of the output pane -->
-            <browser type="ko-widget"
-                     id="findresults1_tabpanel"
-                     collapsed="true" label="&findResults1.label;"
-                     src="chrome://komodo/content/find/findResultsTab.xul"
-                     icon="chrome://icomoon/skin/icons/binoculars.png"/>
-            <browser type="ko-widget"
-                     id="findresults2_tabpanel"
-                     collapsed="true" label="&findResults2.label;"
-                     src="chrome://komodo/content/find/findResultsTab.xul"
-                     icon="chrome://icomoon/skin/icons/binoculars.png"/>
-        </ko-pane>
     </vbox> <!-- main window box -->
     <!-- we need a browser widget to do our printing for us, unfortunatly
         if we collapse or hide it, printing still fails.  So we have to
@@ -2283,100 +2467,6 @@
         the main window box.  -->
     <browser id="printBrowser" type="content-primary" flex="1" disablehistory="true"/>
     </deck>
-    <statusbar fullscreentoolbar="true" orient="horizontal"
-               id="statusbarviewbox"
-               class="chromeclass-status"
-               style="min-height: 1.5em;">
-        <statusbarpanel id="statusbar-notifications-button"
-                        class="statusbarpanel-iconic"
-                        oncommand="ko.uilayout.ensureTabShown('notifications-widget');"/>
-        <statusbarpanel id="statusbar-message-panel" flex="1">
-            <!-- the deck is here to support vi mode -->
-            <deck id="statusbar-message-deck" selectedIndex="0" flex="1">
-                <deck id="statusbar-message-internal-deck" selectedIndex="0" flex="1">
-                    <hbox id="statusbar-message-wrap">
-                        <statusbarpanel id="statusbar-message" value="&ready.label;"
-                                        flex="1" crop="right"/>
-                        <button id="statusbar-message-clear" class="close-button button-plain"
-                                onclick="ko.statusBar.clearMessage();"/>
-                    </hbox>
-                </deck>
-            </deck>
-        </statusbarpanel>
-
-        <statusbarpanel id="statusbar-encoding"
-                        tooltiptext="&fileEncoding.tooltiptext;"
-                        >
-            <toolbarbutton class="statusbar-label"
-                  id="statusbar-encoding-label"
-                  flex="1"
-                  orient="horizontal"
-                  type="menu"
-                  persist="buttonstyle"
-                  label="--"
-                  buttonstyle="text">
-                <menupopup id="statusbar-encoding-menupopup"
-                           onpopupshowing="ko.statusBar.setupEncodingMenu(this);" />
-            </toolbarbutton>
-        </statusbarpanel>
-
-        <statusbarpanel id="statusbar-language"
-                        pack="end"
-                        >
-            <toolbarbutton class="statusbar-label languageicon"
-                  id="statusbar-language-menu"
-                  tooltiptext="&fileType.tooltiptext;"
-                  flex="1"
-                  orient="horizontal"
-                  type="menu"
-                  persist="buttonstyle"
-                  label="--"
-                  buttonstyle="text">
-                <menupopup id="statusbar-filetype-menu"
-                           position="before_end"
-                           onpopupshowing="ko.uilayout.updateViewAsLanguageMenu(this);" />
-            </toolbarbutton>
-        </statusbarpanel>
-
-        <statusbarpanel id="statusbar-line-col"
-                        tooltiptext="&filePosition.tooltiptext;"
-                        style="min-width: 10.5em;"/>
-        <statusbarpanel id="statusbar-selection"
-                        label="&noSelection.label;"
-                        tooltiptext="&selectionInformation.tooltiptext;"
-                        style="min-width: 8em;"/>
-
-        <statusbarpanel id="statusbar-checker"
-                        style="min-width: 36px;">
-            <toolbarbutton id="statusbar-check"
-                           tooltiptext="&syntaxCheckingStatus.tooltiptext;"
-                           orient="horizontal"
-                           type="menu"
-                           persist="buttonstyle"
-                           buttonstyle="pictures"
-                           onclick="if (event.button == 2)
-                            ko.lint.jumpToNextLintResult();">
-                <menupopup id="context_lint" position="before_start">
-                    <menuitem id="context_doLint"
-                              class="statusbar-label"
-                              label="&checkSyntaxNow.label;"
-                              observes="cmd_lintNow"
-                              />
-                    <menuitem id="context_describeResults"
-                              class="statusbar-label"
-                              label="&jumpToNextResult.label;"
-                              observes="cmd_nextLintResult"
-                              />
-                    <menuitem id="context_clearResults"
-                              class="statusbar-label"
-                              label="&clearWarningErrorSquigglies.label;"
-                              observes="cmd_lintClearResults"
-                              />
-                </menupopup>
-            </toolbarbutton>
-        </statusbarpanel>
-
-    </statusbar>
     <commandset id="allcommands">
         <command id="cmd_CustomizeToolbars"
                  oncommand="ko.uilayout.customizeToolbars('toolbox_main');"/>

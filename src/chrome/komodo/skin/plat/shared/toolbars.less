@@ -11,7 +11,9 @@
 {
 
     .border(@main-toolbox-group-border-width, @main-toolbox-group-border-style, @main-toolbox-group-border-color);
+    box-shadow: @main-toolbox-group-shadow;
     height: 24px;
+    margin: 0 3px;
     
     toolbarbutton
     {
@@ -29,14 +31,11 @@
         
         .border(@main-toolbox-button-border-width, @main-toolbox-button-border-style, @main-toolbox-button-border-color);
         box-shadow: @main-toolbox-button-shadow;
-        
         border-radius: @main-toolbox-button-border-radius;
         background-color: @main-toolbox-button-background-color;
         background-image: @main-toolbox-button-background-image;
         background-position: @main-toolbox-button-background-position;
         background-repeat: @main-toolbox-button-background-repeat;
-        
-        -moz-transition: all 0.20s linear;
         
         & > toolbarbutton
         {
@@ -76,8 +75,6 @@
         {
             background-position: 100px, center center;
             border-width: @main-toolbox-button-first-border-width;
-            border-top-left-radius: 3px;
-            border-bottom-left-radius: 3px;
         }
         
         /* Last button in group */
@@ -85,8 +82,6 @@
         {
             padding-right: 5px !important;
             border-width: @main-toolbox-button-last-border-width;
-            border-top-right-radius: 3px;
-            border-bottom-right-radius: 3px;
             padding-right: 0;
             
             image
@@ -206,13 +201,12 @@ toolbox
 {
     -moz-appearance: none;
     background: @main-toolbox-background;
-    border-bottom: @main-toolbox-border-bottom !important;
+    border-bottom: 0 !important;
 }
 
 #toolbar-menubar
 {
     border: 0;
-    margin-bottom: -1px; /* so bottom border doesn't look weird if the toolbox row is hidden */
 }
 
 
@@ -329,14 +323,30 @@ toolbarbutton[disabled="true"] > dropmarker
     border-bottom: none !important;
 }
 
+toolbarbutton > .toolbarbutton-text[label],
+toolbarbutton > .toolbarbutton-text[value]
+{
+    padding-left: 4px;
+}
+
 /* Widget Toolbar */
 
 .widgetToolbarWrap
 {
     -moz-box-align: center;
-    border-bottom: @main-border;
-    box-shadow: @panel-separator-shadow;
-    min-height: 30px;
+
+    &:not(.embedded)
+    {
+        border-top: @main-border;
+        box-shadow: @panel-separator-shadow;
+    }
+
+    &.top
+    {
+        border-bottom: @main-border;
+        border-top: 0;
+        box-shadow: none;
+    }
 
     .widgetToolbar
     {
@@ -352,3 +362,19 @@ toolbarbutton[disabled="true"] > dropmarker
     }
 
 }
+
+.widgetToolbarWrap.embedded,
+{
+    &, .widgetToolbar
+    {
+        background: @list-tree-background;
+    }
+}
+
+.widgetToolbarWrap.centered,
+.widgetToolbar.centered
+{
+    -moz-box-pack: center;
+    -moz-box-flex: 1;
+}
+

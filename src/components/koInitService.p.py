@@ -316,22 +316,23 @@ class KoInitService(object):
         else:
             sys._komodo_initsvc_init_count_sentinel = 1
 
-# #if BUILD_FLAVOUR == "dev"
-        if sys.platform.startswith("win") and os.environ.has_key("KOMODO_DEBUG_BREAK"):
-            print "KOMODO_DEBUG_BREAK in the environment - breaking into system debugger..."
-            try:
-                import win32api
-                win32api.DebugBreak()
-            except ImportError, e:
-                log.exception(e)
-# #endif
+        try:
+            self.checkStartupFlags()
+        except Exception (e):
+            log.exception(e, "Exception while checking for startup flags")
+            
         self.upgradeUserSettings()
+        
+        # Cannot be called before upgradeUserSettings, as it initiates the
+        # prefs before they should be used
+        self.startErrorReporter()
+        
         self.installSamples(False)
         self.installSampleTools()
         self.installTemplates()
         self.setPlatformErrorMode()
         self.setEncoding()
-        self.configureDefaultEncoding()
+        self.checkDefaultEncoding()
         self.initProcessUtils()
 
     def observe(self, subject, topic, data):
@@ -369,7 +370,6 @@ class KoInitService(object):
             self.initExtensions()
             loadStartupCategories('komodo-pre-startup-service')
             observerSvc.addObserver(self, "komodo-ui-started", 1)
-            observerSvc.addObserver(self, "quit-application", 1)
 
         elif topic == "komodo-ui-started":
             observerSvc.removeObserver(self, "komodo-ui-started")
@@ -380,23 +380,6 @@ class KoInitService(object):
             observerSvc.removeObserver(self, "komodo-post-startup")
             loadStartupCategories('komodo-delayed-startup-service')
             
-        elif topic == "quit-application":
-            observerSvc.removeObserver(self, "quit-application")
-            self._clearBrowserCache()
-            
-    def _clearBrowserCache(self):
-        """clear the browser cache on shutdown (bug 67586)"""
-        cacheService = components.classes["@mozilla.org/network/cache-service;1"]\
-             .getService(components.interfaces.nsICacheService);
-        try:
-            cacheService.evictEntries(components.interfaces.nsICache.STORE_ANYWHERE)
-        except Exception:
-            # Most Mozilla JS code that calls this method wraps it in a
-            # JS exception handler.  I didn't see which exception this
-            # throws in XPCOM - it always works, so use a generic exception.
-            # We wouldn't want an exception to mess with the shutdown procedure.
-            log.exception("error clearing browser cache")
-
     def setPlatformErrorMode(self):
         if sys.platform.startswith("win"):
             try:
@@ -423,6 +406,156 @@ class KoInitService(object):
             except ImportError:
                 log.error("Could not import ctypes to set the "\
                          "Win32 Error Mode.")
+    
+    def checkStartupFlags(self):
+        import shutil
+        
+        koDirSvc = components.classes["@activestate.com/koDirs;1"].getService()
+        
+        ## Clean up after temp profile use
+        path = "%s-kotemp-original" % (koDirSvc.userDataDir)
+        if os.path.isdir(path):
+            if os.path.isdir(koDirSvc.userDataDir):
+                shutil.rmtree(koDirSvc.userDataDir)
+            os.rename(path, koDirSvc.userDataDir)
+            
+        ## Clean up after startup with no addons
+        path = os.path.join(koDirSvc.userDataDir, "XRE", "extensions")
+        tmpPath = "%s-kotemp-original" % (path)
+        if os.path.isdir(tmpPath):
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            os.rename(tmpPath, path)
+            
+        ## Clean up after startup with no toolbox
+        path = os.path.join(koDirSvc.userDataDir, "tools")
+        tmpPath = "%s-kotemp-original" % (path)
+        if os.path.isdir(tmpPath):
+            if os.path.isdir(path):
+                shutil.rmtree(path)
+            os.rename(tmpPath, path)
+        
+        ## Check if a flag was set
+        path = os.path.join(koDirSvc.userDataDir, "flags")
+        try:
+            f = open(path)
+            flag = f.read().strip()
+            f.close()
+            os.remove(path)
+        except IOError:
+            return
+        
+        ## Delete any file level preferences
+        if flag == "cleanDocState":
+            path = os.path.join(koDirSvc.userDataDir, "doc-state.xmlc")
+            if os.path.isfile(path):
+                os.remove(path)
+            
+        ## Delete the codeintel database
+        elif flag == "cleanViewState":
+            path = os.path.join(koDirSvc.userDataDir, "view-state.xmlc")
+            if os.path.isfile(path):
+                os.remove(path)
+        
+        ## Start with a clean profile
+        elif flag == "cleanProfile":
+            paths = [koDirSvc.userDataDir]
+            profds = self._getProfileDirs()
+            
+            for d in profds:
+                paths.push(d[2])
+            
+            for path in paths:
+                n = 0
+                newPath = "%s-backup" % (path)
+                while os.path.isdir(newPath):
+                    n = n + 1
+                    newPath = "%s-backup-%d" % (path,n)
+                
+                if os.path.isfile(path):
+                    os.rename(path, newPath)
+        
+        ## Start with a temporary profile
+        elif flag == "tempProfile":
+            path = koDirSvc.userDataDir
+            newPath = "%s-kotemp-original" % (path)
+            
+            if os.path.isfile(path):
+                os.rename(path, newPath)
+            
+            self.disableImportProfile = true
+            
+        ## Start without addons
+        elif flag == "tempNoAddons":
+            path = os.path.join(koDirSvc.userDataDir, "XRE", "extensions")
+            newPath = "%s-kotemp-original" % (path)
+            if os.path.isfile(path):
+                os.rename(path, newPath)
+            
+        ## Start without toolbox items
+        elif flag == "tempNoToolbox":
+            path = os.path.join(koDirSvc.userDataDir, "tools")
+            newPath = "%s-kotemp-original" % (path)
+            if os.path.isfile(path):
+                os.rename(path, newPath)
+        
+        ## Delete the codeintel database
+        elif flag == "cleanCodeintel":
+            import shutil
+            path = os.path.join(koDirSvc.userDataDir, "codeintel")
+            self._rmtree(path)
+            
+        ## Delete the codeintel database
+        elif flag == "cleanCaches":
+            import shutil
+            self._rmtree(os.path.join(koDirSvc.userDataDir, "cache2"))
+            self._rmtree(os.path.join(koDirSvc.userDataDir, "fileicons"))
+            self._rmtree(os.path.join(koDirSvc.userDataDir, "icons"))
+            self._rmtree(os.path.join(koDirSvc.userDataDir, "lessCache"))
+            self._rmtree(os.path.join(koDirSvc.userDataDir, "OfflineCache"))
+            self._rmtree(os.path.join(koDirSvc.userDataDir, "startupCache"))
+            self._rmtree(os.path.join(koDirSvc.userDataDir, "userstyleCache"))
+    
+    def _rmtree(self, path):
+        import shutil
+        if os.path.isdir(path):
+            shutil.rmtree(path)
+
+    def startErrorReporter(self):
+        prefs = components.classes["@activestate.com/koPrefService;1"]\
+                .getService(components.interfaces.koIPrefService).prefs
+        i = components.classes["@activestate.com/koInfoService;1"]\
+                .getService(components.interfaces.koIInfoService);
+        
+        if not prefs.getBooleanPref("analytics_enabled"):
+            return
+        
+        try:
+            import bugsnag
+            from bugsnag.handlers import BugsnagHandler
+            koDirSvc = components.classes["@activestate.com/koDirs;1"].getService()
+            
+            bugsnag.configure(
+                api_key = prefs.getString("bugsnag_key"),
+                project_root = koDirSvc.installDir,
+                release_stage = i.buildFlavour,
+                app_version = i.version)
+            
+            bugsnag.configure_request(extra_data = {
+                "platform": i.buildPlatform,
+                "release": i.osRelease,
+                "type": i.productType,
+                "version": i.version,
+                "build": i.buildNumber,
+                "releaseStage": i.buildFlavour
+            }, user = {"id": prefs.getString("analytics_ga_uid", "")})
+            
+            # Hook it up to our loggers
+            logger = logging.getLogger()
+            logger.addHandler(BugsnagHandler())
+        except Exception as e:
+            log.error("Failed starting bugsnag error reporter: %s" % e.message)
+        
 
     def _safelyReloadSys(self):
         """Safely reload the sys module.
@@ -661,50 +794,34 @@ class KoInitService(object):
     def getStartupEncoding(self):
         return self._startup_locale[1]
 
-    def configureDefaultEncoding(self):
-        # Setup Komodo default file encoding.
-        # Komodo can only handle _some_ encodings out there. Typically
-        # Komodo will use the current system encoding (as returned by
-        # koInitService.getStartupEncoding()) as the default file encoding.
-        # However if the system encoding is one that Komodo cannot handle
-        # then we fallback to an encoding that we can handle.
+    def checkDefaultEncoding(self):
+        # Check the Komodo default file encoding, as Komodo can only handle
+        # _some_ encodings out there. Typically if the set encoding is one that
+        # Komodo cannot handle then we fallback to an encoding that we know
+        # Komodo will handle - UTF8.
         prefs = components.classes["@activestate.com/koPrefService;1"]\
                 .getService(components.interfaces.koIPrefService).prefs
         encodingSvc = components.classes["@activestate.com/koEncodingServices;1"].\
                           getService(components.interfaces.koIEncodingServices)
-        # Determine the currently configured default file encoding.
-        useSystemEncoding = prefs.getBooleanPref("encodingEnvironment")
-        defaultEncoding = self.getStartupEncoding()
-        if not useSystemEncoding:
-            defaultEncoding = prefs.getStringPref("encodingDefault")
+
+        # Get the default file encoding.
+        defaultEncoding = prefs.getString("encodingDefault", "utf-8")
         log.debug("encoding: currently configured default is '%s'", defaultEncoding)
+
         # Ensure the default encoding can be handled by Komodo.
         if encodingSvc.get_encoding_index(defaultEncoding) == -1:
-            # The current default encoding is NOT supported.
-            log.debug("encoding: '%s' is not supported", defaultEncoding)
-            defaultEncoding = None
-            if useSystemEncoding:
-                defaultEncoding = prefs.getStringPref("encodingDefault")
-                log.debug("encoding: try to fallback to 'encodingDefault' pref setting: '%s'", defaultEncoding)
-                if encodingSvc.get_encoding_index(defaultEncoding) == -1:
-                    # the default encoding in prefs is no good either
-                    log.debug("encoding: '%s' is not supported either", defaultEncoding)
-                    defaultEncoding = None
+            # This encoding is NOT supported.
+            log.debug("encoding %r is not supported - defaulting to UTF-8", defaultEncoding)
+            defaultEncoding = "utf-8"
+            assert encodingSvc.get_encoding_index(defaultEncoding) >= 0
+            prefs.setStringPref("encodingDefault", defaultEncoding)
 
-            if not defaultEncoding:
-                # Western European is our last resort fallback.
-                defaultEncoding = "iso8859-1"
-                log.debug("encoding: fallback to '%s' (Western European)", defaultEncoding);
-            prefs.setBooleanPref("encodingEnvironment", False);
-
-        #XXX Komodo code requires the encodingDefault string to be lowercase
-        #    and while Komodo code has been updated to guarantee this there
-        #    may still be uppercase user prefs out there.
-        #XXX Unfortunately we have to write the default encoding to user
-        #    prefs even if the system encoding is being used because
-        #    most Komodo code using "encodingDefault" does not honour
-        #    "encodingEnvironment".
-        prefs.setStringPref("encodingDefault", defaultEncoding.lower())
+        # Sanity check.
+        if defaultEncoding != defaultEncoding.lower():
+            #XXX Komodo code requires the encodingDefault string to be lowercase
+            #    and while Komodo code has been updated to guarantee this there
+            #    may still be uppercase user prefs out there.
+            prefs.setStringPref("encodingDefault", defaultEncoding.lower())
 
     def initProcessUtils(self):
         # Bug 81114: koUserEnviron needs to know to environ encoding to
@@ -825,7 +942,7 @@ class KoInitService(object):
             prefs.deletePref("autoSaveMinutes")
 
     # This value must be kept in sync with the value in "../prefs/prefs.p.xml"
-    _current_pref_version = 11
+    _current_pref_version = 20
 
     def _upgradeUserPrefs(self, prefs):
         """Upgrade any specific info in the user's prefs.xml.
@@ -902,6 +1019,50 @@ class KoInitService(object):
         if version < 11: # Komodo 9.0.0a1
             self._flattenLanguagePrefs(prefs)
 
+        if version < 13:
+            prefs.setBoolean("transit_commando_keybinds", True)
+
+        if version < 14:
+            oldScheme = prefs.getStringPref("editor-scheme")
+            if oldScheme.startswith("Dark_"):
+                prefs.setString("editor-scheme", "Tomorrow_Dark")
+            elif oldScheme == "Solarized":
+                prefs.setString("editor-scheme", "Solarized_Dark")
+            elif oldScheme in ("BlueWater", "Bright", "Default", "Komodo",
+                               "LowContrast_Zenburn", "Medium"):
+                # Transition to the new light scheme.
+                prefs.setString("editor-scheme", "Tomorrow_Light")
+            # Else it's a custom scheme - leave it alone.
+
+        if version < 16:
+            # Default encoding changes:
+            if prefs.getBoolean("encodingEnvironment", True):
+                # Change default encoding to be utf-8, instead of the system
+                # encoding.
+                prefs.setString("defaultEncoding", "utf-8")
+            # else, the user has already set it to what they want.
+            # Remove obsolete pref.
+            if prefs.hasPrefHere("encodingEnvironment"):
+                prefs.deletePref("encodingEnvironment")
+            
+        if version < 17:
+            prefs.setBoolean("koSkin_use_custom_scrollbars", True)
+            
+        if version < 18:
+            # Reset skin and iconset to defaults because 9.0 is a major release
+            prefs.deletePref("koSkin_custom_icons")
+            prefs.deletePref("koSkin_custom_skin")
+            prefs.deletePref("runtime_manifests")
+            
+        if version < 20: # Komodo 9.2
+            activeSkin = prefs.getString("koSkin_custom_skin", "")
+            if activeSkin == "chrome://abyss-skin/content/manifest/chrome.manifest":
+                prefs.deletePref("koSkin_custom_icons")
+                prefs.deletePref("koSkin_custom_skin")
+                prefs.deletePref("runtime_manifests")
+                prefs.setBoolean("removedAbyss", True)
+                prefs.setBoolean("forceSkinReload", True)
+
         # Set the version so we don't have to upgrade again.
         prefs.setLongPref("version", self._current_pref_version)
 
@@ -953,10 +1114,80 @@ class KoInitService(object):
             ignoredDirNames = [
                 # Bug 90294: klint is replaced by a builtin extension in 7.0a3
                 # Ensure we don't upgrade the user-profile version of it.
-                "klint@dafizilla.sourceforge.net"
+                "klint@dafizilla.sourceforge.net",
+                # Don't upgrade caches:
+                "Cache",
+                "cache2",
+                "_CACHE_CLEAN_",
+                "crashes",
+                "lessCache",
+                "minidumps",
+                "startupCache",
             ]
             _copy(prevXREDir, currXREDir, overwriteExistingFiles=False,
                   ignoreErrors=True, ignoredDirNames=ignoredDirNames)
+            # Another cache, but name is too common to use in ignoredDirNames.
+            if os.path.exists(os.path.join(currXREDir, "icons")):
+                _rmtree(os.path.join(currXREDir, "icons"))
+                
+    def _getProfileDirs(self):
+        from os.path import dirname, basename, join, exists
+        
+        koDirSvc = components.classes["@activestate.com/koDirs;1"].getService()
+        currUserDataDir = koDirSvc.userDataDir
+        
+        # Get the current version.
+        infoSvc = components.classes["@activestate.com/koInfoService;1"].getService()
+        currVer = infoSvc.version.split(".", 2)[:2]
+        for i in range(len(currVer)):
+            try:
+                currVer[i] = int(currVer[i])
+            except ValueError:
+                pass
+        currVer = tuple(currVer) # e.g. (6,0)
+        
+        # Determine from which Komodo userdatadir we should upgrade.
+        basedir, base = os.path.split(dirname(currUserDataDir))
+        if base not in ("KomodoEdit", ".komodoedit"):
+            # Looks like KOMODO_USERDATADIR is being used.
+            datadirs = [dirname(currUserDataDir)]
+        elif sys.platform in ("win32", "darwin"):
+            datadirs = [join(basedir, d) for d in ("Komodo", "KomodoEdit")]
+            if sys.platform == "win32":
+                # Komodo 6 on Windows moved the profile directory from the
+                # roaming app data dir, to the local app data dir (applies to
+                # Vista and Windows 7). Add these older roaming user data
+                # directories as well.
+                roaming_komodo_data_dir = dirname(dirname(koDirSvc.roamingUserDataDir))
+                if roaming_komodo_data_dir != currUserDataDir:
+                    datadirs += [join(roaming_komodo_data_dir, d) for d in
+                                ("Komodo", "KomodoEdit")]
+        else:
+            datadirs = [join(basedir, d) for d in (".komodo", ".komodoedit")]
+        ver_pat = re.compile(r"^\d+\.\d+$")
+        vers_and_userdatadirs = []
+        for datadir in datadirs:
+            try:
+                ver_strs = os.listdir(datadir)  # e.g. ["3.5", "4.0", "bogus"]
+            except EnvironmentError, ex:
+                continue
+            for ver_str in ver_strs:
+                if not ver_pat.match(ver_str):  # e.g. "bogus" doesn't match
+                    continue
+                ver = tuple(map(int, ver_str.split('.')))
+                if ver < (4, 0):
+                    log.debug("Skipping Komodo profile: %r - too old", ver)
+                    continue # Skip versions prior to 4.0.
+                if ver > currVer:
+                    continue # Skip future versions, we don't downgrade.
+                userdatadir = join(datadir, ver_str)
+                if userdatadir == currUserDataDir:
+                    continue # Skip: can't upgrade from self.
+                vers_and_userdatadirs.append(
+                    (ver, _splitall(userdatadir), userdatadir))
+        vers_and_userdatadirs.sort()
+        
+        return vers_and_userdatadirs
 
     def _upgradeUserDataDirFiles(self):
         """Upgrade files under the USERDATADIR if necessary.
@@ -1006,15 +1237,7 @@ class KoInitService(object):
             "autosave": "autosave",
         }
 
-        # Get the current version.
-        infoSvc = components.classes["@activestate.com/koInfoService;1"].getService()
-        currVer = infoSvc.version.split(".", 2)[:2]
-        for i in range(len(currVer)):
-            try:
-                currVer[i] = int(currVer[i])
-            except ValueError:
-                pass
-        currVer = tuple(currVer) # e.g. (6,0)
+
 
         # First determine if we need to upgrade at all.
         # If any of the above exist in the current version's user data
@@ -1030,46 +1253,8 @@ class KoInitService(object):
                 log.debug("not upgrading userdatadir files: '%s' exists", path)
                 return
 
-        # Determine from which Komodo userdatadir we should upgrade.
-        basedir, base = os.path.split(dirname(currUserDataDir))
-        if base not in ("KomodoEdit", ".komodoedit"):
-            # Looks like KOMODO_USERDATADIR is being used.
-            datadirs = [dirname(currUserDataDir)]
-        elif sys.platform in ("win32", "darwin"):
-            datadirs = [join(basedir, d) for d in ("Komodo", "KomodoEdit")]
-            if sys.platform == "win32":
-                # Komodo 6 on Windows moved the profile directory from the
-                # roaming app data dir, to the local app data dir (applies to
-                # Vista and Windows 7). Add these older roaming user data
-                # directories as well.
-                roaming_komodo_data_dir = dirname(dirname(koDirSvc.roamingUserDataDir))
-                if roaming_komodo_data_dir != currUserDataDir:
-                    datadirs += [join(roaming_komodo_data_dir, d) for d in
-                                ("Komodo", "KomodoEdit")]
-        else:
-            datadirs = [join(basedir, d) for d in (".komodo", ".komodoedit")]
-        ver_pat = re.compile(r"^\d+\.\d+$")
-        vers_and_userdatadirs = []
-        for datadir in datadirs:
-            try:
-                ver_strs = os.listdir(datadir)  # e.g. ["3.5", "4.0", "bogus"]
-            except EnvironmentError, ex:
-                continue
-            for ver_str in ver_strs:
-                if not ver_pat.match(ver_str):  # e.g. "bogus" doesn't match
-                    continue
-                ver = tuple(map(int, ver_str.split('.')))
-                if ver < (4, 0):
-                    log.debug("Skipping Komodo profile: %r - too old", ver)
-                    continue # Skip versions prior to 4.0.
-                if ver > currVer:
-                    continue # Skip future versions, we don't downgrade.
-                userdatadir = join(datadir, ver_str)
-                if userdatadir == currUserDataDir:
-                    continue # Skip: can't upgrade from self.
-                vers_and_userdatadirs.append(
-                    (ver, _splitall(userdatadir), userdatadir))
-        vers_and_userdatadirs.sort()
+        vers_and_userdatadirs = self._getProfileDirs()
+
         # This now looks like, e.g.:
         #   [((4, 0), ['C:\\', ..., 'Komodo', '4.0'],     'C:\\...\\Komodo\\4.0'),
         #    ((5, 2), ['C:\\', ..., 'KomodoEdit', '5.2'], 'C:\\...\\KomodoEdit\\5.2')]
@@ -1108,6 +1293,10 @@ class KoInitService(object):
 
     def upgradeUserSettings(self):
         """Called every time Komodo starts up to initialize the user profile."""
+        
+        if hasattr(self, 'disableImportProfile') and self.disableImportProfile:
+            return
+        
         try:
             self._upgradeUserDataDirFiles()
             prefs = components.classes["@activestate.com/koPrefService;1"]\

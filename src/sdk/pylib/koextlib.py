@@ -93,6 +93,8 @@ from os.path import exists, join, dirname, isdir, basename, splitext, \
 import sys
 import re
 import uuid
+import shutil
+import distutils.dir_util
 import logging
 import tempfile
 from glob import glob
@@ -736,7 +738,8 @@ def dev_install(base_dir, force=False, dry_run=False, log=None):
         open(ext_file, 'w').write(dev_dir)
 
 def komodo_build_install(base_dir, ppdefines=None, dry_run=False, log=None,
-                         unjarred=False, xpi_path=None, distinstall=False):
+                         unjarred=False, xpi_path=None, distinstall=False,
+                         additional_includes=None, packed=False):
     """Install the extension in `base_dir` into a Komodo build.
         
     This command is for building *core* Komodo extensions into a Komodo
@@ -757,6 +760,8 @@ def komodo_build_install(base_dir, ppdefines=None, dry_run=False, log=None,
         are zipped up into a '$ext-name.jar' file.
     @param xpi_path {str} Optional. File path for the built .xpi file.
     @param distinstall {bool} Optional. Install into the "distributions" dir.
+    @param additional_includes {list} Optional - a list of paths to include in
+        final xpi.
     """
     if log is None: log = _log
     if not is_ext_dir(base_dir):
@@ -768,15 +773,31 @@ def komodo_build_install(base_dir, ppdefines=None, dry_run=False, log=None,
     
     # `build_ext` knows how to build the extension. We just call it and
     # use the .xpi it produces.
+    custom_xpi_path = xpi_path
     xpi_path = build_ext(base_dir, ppdefines=ppdefines, log=log,
-                         unjarred=unjarred, xpi_path=xpi_path)
-    
-    # Unzip the .xpi into that dir.
+                         unjarred=unjarred, xpi_path=xpi_path,
+                         additional_includes=additional_includes)
+
     destdir = None
     if distinstall:
         ko_info = KomodoInfo()
         destdir = ko_info.distext_base_dir
-    komodo_unpack_xpi(xpi_path, destdir=destdir)
+
+    if packed:
+        if custom_xpi_path:
+            # All done here.
+            return
+        # Copy the .xpi into the destination.
+        if destdir is None:
+            ko_info = KomodoInfo()
+            destdir = ko_info.ext_base_dir
+        # The xpi file most be named exactly as the ID in the install.rdf file.
+        ext_info = ExtensionInfo(base_dir)
+        destfile = join(destdir, ext_info.id + ".xpi")
+        _cp(xpi_path, destfile)
+    else:
+        # Unzip the .xpi into the destination.
+        komodo_unpack_xpi(xpi_path, destdir=destdir)
 
 def komodo_unpack_xpi(xpi_path, log=None, destdir=None):
     """Unpack an extension .xpi file into a Komodo build.
@@ -1382,7 +1403,6 @@ def _rmtree_OnError(rmFunction, filePath, excInfo):
         os.chmod(filePath, 0777)
         rmFunction(filePath)
 def _rmtree(dirname):
-    import shutil
     shutil.rmtree(dirname, 0, _rmtree_OnError)
 
 # Recipe: run (0.5.3)
@@ -1483,25 +1503,18 @@ def _rm(path, logstream=None):
 
 def _mv(src, dest, logstream=None):
     """Move src (a file or a directory) to dest."""
-    import shutil
     shutil.move(src, dest)
 
 def _cp(src, dest, logstream=None):
     """My little lame cross-platform 'cp'"""
-    assert ' ' not in src and ' ' not in dest,\
-        "_cp: can't handle paths in spaces: src=%r, dest=%r" % (src, dest)
-    if sys.platform == "win32":
-        src = src.replace("/", "\\")
-        dest = dest.replace("/", "\\")
-        if isdir(src):
-            _run("xcopy /e/i/y/q %s %s >nul" % (src, dest), logstream=logstream)
-        else:
-            _run("copy /y %s %s >nul" % (src, dest), logstream=logstream)
+    dest_parent = dirname(dest)
+    if dest_parent:
+        _mkdir(dest_parent)
+    if isdir(src):
+        #shutil.copytree(src, dest)
+        distutils.dir_util.copy_tree(src, dest)
     else:
-        if isdir(src):
-            _run("cp -R %s %s" % (src, dest), logstream=logstream)
-        else:
-            _run("cp %s %s" % (src, dest), logstream=logstream)
+        shutil.copy(src, dest)
 
 def _mkdir(dir, logstream=None):
     """My little lame cross-platform 'mkdir -p'"""

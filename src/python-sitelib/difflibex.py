@@ -380,8 +380,9 @@ class Diff:
                 re.compile(r"^([\*-]){3} (?P<startline>\d+)(,(?P<endline>\d+))? \1{4}$"),
             "unified hunk header":
                 # E.g., '@@ -296,7 +296,8 @@'
-                re.compile(r"^@@ -(?P<beforestartline>\d+),(\d+) "
-                            "\+(?P<afterstartline>\d+),(\d+) @@"),
+                # E.g., '@@ -1 +0,0 @@'
+                re.compile(r"^@@\s-(?P<beforestartline>\d+)(,(\d+))?\s"
+                            "\+(?P<afterstartline>\d+)(,(\d+))?\s@@"),
         }
 
     def __init__(self, content):
@@ -894,6 +895,22 @@ class Diff:
                                  % file_diff.diff_type)
 
         return (file_path, file_line, file_col)
+
+    def get_changed_line_numbers_by_filepath(self):
+        """A dict of filepaths and their changed line numbers (0 based)"""
+        result = {}
+        for file_diff in self.file_diffs:
+            file_path = file_diff.best_path()
+            result[file_path] = linenums = []
+            _, file_line, _ = self.file_pos_from_diff_pos(file_diff.header_start_line, 0)
+            for hunk in file_diff.hunks:
+                for line in hunk.lines:
+                    if line.startswith(" "):
+                        file_line += 1
+                    elif line.startswith("+"):
+                        linenums.append(file_line)
+                        file_line += 1
+        return result
 
     def possible_paths_from_diff_pos(self, diff_line, diff_col):
         """Return a list of all possible file paths for the given position.

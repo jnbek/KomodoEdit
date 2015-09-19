@@ -59,7 +59,8 @@ Typical commands for building all Komodo bits:
 PKGNAME's are docs, installer (aka msi, dbg, aspackage).
 """
 
-import os, sys, os, shutil, pickle
+import os, sys, os, shutil
+import cPickle as pickle
 import time
 from os.path import join, dirname, exists, isfile, basename, abspath, \
                     isdir, splitext
@@ -611,11 +612,12 @@ def __run_log(logstream, msg, *args, **kwargs):
     else:
         logstream(msg, *args, **kwargs)
 
-def _run(cmd, logstream=_RUN_DEFAULT_LOGSTREAM, cwd=None):
+def _run(cmd, logstream=_RUN_DEFAULT_LOGSTREAM, cwd=None, env=None):
     """Run the given command.
 
         "cmd" is the command to run
         "cwd" is the directory in which the commmand is run.
+        "env" is the optional environment dict to use
         "logstream" is an optional logging stream on which to log the 
             command. If None, no logging is done. If unspecifed, this 
             looks for a Logger instance named 'log' and logs the command 
@@ -634,7 +636,7 @@ def _run(cmd, logstream=_RUN_DEFAULT_LOGSTREAM, cwd=None):
         __run_log(logstream, "running '%s' in '%s'", cmdline, cwd)
     else:
         __run_log(logstream, "running '%s'", cmdline)
-    p = subprocess.Popen(cmd, cwd=cwd, shell=shell)
+    p = subprocess.Popen(cmd, cwd=cwd, shell=shell, env=env)
     status = p.wait()
     if status:
         #TODO: add std OSError attributes or pick more approp. exception
@@ -747,7 +749,8 @@ configuration = {
     "msiVccrtRedistPath": MSIVccrtRedistPath(),
     "msiVccrtPolicyMsmPath": MSIVccrtPolicyMsmPath(),
 
-    # OSX packagig:
+    # OSX packaging:
+    "osxCodeSignExecutable": OSXCodeSignExecutable(),
     "osxCodeSigningCert": OSXCodeSigningCert(),
 
     "komodoPackageBase": KomodoPackageBase(),
@@ -818,14 +821,17 @@ configuration = {
     "docsPackageName": DocsPackageName(),
     "mozPatchesPackageName": MozPatchesPackageName(),
 
-    "withStackato": WithStackato(),
     "withTests": WithTests(),
     "withCasper": WithCasper(),
     "withJSLib": WithJSLib(),
     "withDocs": WithDocs(),
     "withKomodoCix": WithKomodoCix(),
     "withWatchdogFSNotifications": WithWatchdogFSNotifications(),
-    "xulrunner": XULRunnerApp(), # xulrunner based builds
+
+    # PGO builds
+    "withPGOGeneration": WithPGOGeneration(),
+    "withPGOCollection": WithPGOCollection(),
+    
     "universal": UniversalApp(), # ppc+i386 builds
 
     "ludditeVersion": LudditeVersion(),
@@ -835,7 +841,6 @@ configuration = {
     "buildTime": BuildTime(),
     "buildASCTime": BuildASCTime(),
     "buildPlatform": BuildPlatform(),
-    "xulrunnerBuildId": XULRunnerBuildId(),
 
     #---- items necessary for building a Komodo installer
     # (i.e. not required for plain development builds),
@@ -1045,6 +1050,12 @@ def ImageKomodo(cfg, argv):
             return ipkgpath(cfg.macKomodoAppInstallName, "Contents", "MacOS", *parts)
         else:
             return ipkgpath("INSTALLDIR", "lib", "mozilla", *parts)
+    def iimozresourcespath(*parts):
+        """Mac uses Resources folder for most data files."""
+        if sys.platform == "darwin":
+            return ipkgpath(cfg.macKomodoAppInstallName, "Contents", "Resources", *parts)
+        else:
+            return iimozbinpath(*parts)
     def iipylibpath(*parts):
         if sys.platform == "win32":
             return ipkgpath("feature-core", "INSTALLDIR", "lib", "python", "Lib", *parts)
@@ -1235,8 +1246,26 @@ def ImageKomodo(cfg, argv):
         ("rtrim", ".mkdir.done"),
         ("rtrim", "*.pyc"),
         ("rtrim", "*.pyo"),
+        ("rtrim", "*.egg-info"),  # Python setup/easyinstall files.
         ("rm",    iimozbinpath("*.txt")),
         ("rm",    iimozbinpath("LICENSE")),
+        ("rm",    iimozbinpath("pydbgp*")),
+        ("rm",    iimozbinpath("scintilla.a")),
+
+        # Trim Mozilla stuff.
+        ("rm",    iimozbinpath("*.sh")),
+        ("rm",    iimozbinpath(".gdbinit")),
+        ("rm",    iimozbinpath(".lldbinit")),
+        ("rm",    iimozbinpath(".purgecaches")),
+        ("rm",    iimozbinpath("application.ini")),
+        ("rmdir", iimozbinpath("gmp-clearkey")),
+        ("rmdir", iimozbinpath("gmp-fake")),
+        ("rm",    iimozbinpath("js-gdb.py")),
+        ("rm",    iimozbinpath("komodo-bin")),
+        ("rm",    iimozbinpath("mangle")),
+        ("rm",    iimozbinpath("mozilla-xremote-client")),
+        ("rm",    iimozbinpath("nsinstall")),
+        ("rm",    iimozbinpath("shlibsign")),
 
         # Trim some unneeded stuff in siloed Python.
         ("rmdir", iipylibpath("ctypes", "test")),
@@ -1269,6 +1298,8 @@ def ImageKomodo(cfg, argv):
         # Don't need Windows debug symbol files.
         ibits += [
             ("rtrim", "*.pdb"),
+            ("rm",    iimozbinpath("mangle.exe")),
+            ("rm",    iimozbinpath("shlibsign.exe")),
         ]
         # We don't need the Python DLLs beside python.exe in the siloed
         # Python. The DLLs are already beside the main komodo.exe where
@@ -1286,6 +1317,29 @@ def ImageKomodo(cfg, argv):
         # Don't need the pyxpcom manifest as we have our own komodo manifest.
         ("trim", iimozbinpath("components", "pyxpcom.manifest")),
     ]
+
+    # Mac requires most files to reside in the Resources directory.
+    if sys.platform == "darwin":
+        ibits += [
+            ("mv", iimozbinpath("components"), iimozresourcespath("components")),
+            ("mv", iimozbinpath("chrome"), iimozresourcespath("chrome")),
+            ("mv", iimozbinpath("chrome.manifest"), iimozresourcespath("chrome.manifest")),
+            ("mv", iimozbinpath("defaults"), iimozresourcespath("defaults")),
+            ("mv", iimozbinpath("dictionaries"), iimozresourcespath("dictionaries")),
+            ("mv", iimozbinpath("distribution"), iimozresourcespath("distribution")),
+            ("mv", iimozbinpath("extensions"), iimozresourcespath("extensions")),
+            ("mv", iimozbinpath("greprefs.js"), iimozresourcespath("greprefs.js")),
+            ("mv", iimozbinpath("hyphenation"), iimozresourcespath("hyphenation")),
+            ("mv", iimozbinpath("modules"), iimozresourcespath("modules")),
+            ("mv", iimozbinpath("platform.ini"), iimozresourcespath("platform.ini")),
+            ("mv", iimozbinpath("plugins"), iimozresourcespath("plugins")),
+            ("mv", iimozbinpath("pyxpcom.manifest"), iimozresourcespath("pyxpcom.manifest")),
+            ("mv", iimozbinpath("res"), iimozresourcespath("res")),
+            ("mv", iimozbinpath("update.locale"), iimozresourcespath("update.locale")),
+            ("mv", iimozbinpath("update-settings.ini"), iimozresourcespath("update-settings.ini")),
+            ("mv", iimozbinpath("updater.ini"), iimozresourcespath("updater.ini")),
+            ("mv", iimozbinpath("python"), iimozresourcespath("python")),
+        ]
 
     GenerateCaches(cfg)
 
@@ -1396,12 +1450,6 @@ def ImageKomodo(cfg, argv):
             os.symlink("../python/lib/%s.1.0" % basename(libpythonXYso), path)
             log.debug("image:: symlinking %r => %r", path, "../python/lib/%s.1.0" % basename(libpythonXYso))
 
-    # Ensure that there is a <image>/lib/mozilla/extensions directory
-    # (bug 42497).
-    extensions_dir = iimozbinpath("extensions")
-    if not exists(extensions_dir):
-        os.makedirs(extensions_dir)
-
     # Strip off any fat from the Komodo/Mozilla binaries to reduce the overall
     # size.
     # Note: This will still leave in the necessary crash-reporter information
@@ -1451,10 +1499,11 @@ def _PackageKomodoDMG(cfg):
     if hasattr(cfg, "osxCodeSigningCert"):
         codesignDir = os.path.join(cfg.komodoDevDir, "src/install/osx-codesign")
         try:
+            codesign_exe = getattr(cfg, "osxCodeSignExecutable", None)
             sys.path.append(codesignDir)
             import codesign
             codesign.codesign(os.path.join(cfg.installRelDir, cfg.macKomodoAppInstallName),
-                              cfg.osxCodeSigningCert)
+                              cfg.osxCodeSigningCert, codesign_exe=codesign_exe)
         finally:
             sys.path.remove(codesignDir)
 
@@ -1667,7 +1716,7 @@ def _PackageKomodoUpdates(cfg, dryRun=False):
         end_rev = guru.changenum_from_mar_path(pkg_path)
         html = changelog.changelog_html(start_rev, end_rev)
         if not dryRun:
-            open(changelog_path, 'w').write(html)
+            open(changelog_path, 'w').write(html.encode('utf-8', 'ignore'))
         print "created '%s'" % changelog_path
     if not built_at_least_one_nightly_update:
         log.warn("no previous nightly complete .mar exists: skipping "
@@ -2126,7 +2175,7 @@ def GetScintillaSource(cfg, argv):
                     logDir=join(cfg.buildAbsDir, "scintilla-patch-log"))
     # Run the HFacer to generate the scintilla include files.
     _run_in_dir(sys.executable + " HFacer.py",
-                join("src", "scintilla", "include"),
+                join("src", "scintilla", "scripts"),
                 log.debug)
 
 
@@ -2264,6 +2313,7 @@ def CleanKomodoBuild(cfg, argv):
         mozbinpath("plugins", "libnpscimoz.so"),
 
         mozbinpath("extensions"),
+        mozbinpath("distribution", "bundles"),
         mozbinpath("updater.ini"),
 
         mozbinpath("plugins", "SciMoz.plugin"), # its name on OS X
@@ -2548,7 +2598,6 @@ def BuildQuickBuildDB(cfg, argv):
               extNameMappings={
                     'rails': 'railstools',
                     'spellcheck': 'komodospellchecker',
-                    'stackato': 'stackatotools',
                     })
     _addFiles(cfg, sourceSubdir='src/',
               targetSubdir=os.path.join(cfg.mozBin, 'components'),
@@ -2715,7 +2764,15 @@ def BuildCrashReportSymbols(cfg):
                output_dir,             # where crashreporter symbol files end up
                cfg.buildAbsDir,        # where to look for ".pdb" files
               ]
-        _run(' '.join(cmd))
+
+        # Ensure the Mozilla Python libraries are on the pythonpath:
+        env = os.environ.copy()
+        pypath = env.get('PYTHONPATH', '').split(os.pathsep)
+        pypath.append(join(cfg.mozSrc, "mozilla", "python", "mozbuild"))
+        pypath.append(join(cfg.mozSrc, "mozilla", "python", "jsmin"))
+        env['PYTHONPATH'] = os.pathsep.join(pypath)
+
+        _run(' '.join(cmd), env=env)
 
 
 commandOverrides = {

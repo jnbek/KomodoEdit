@@ -258,6 +258,38 @@ if (typeof ko.openfiles == 'undefined')
             {
                 self.sort();
             },
+            
+            is_cmd_bufferNext_supported: function()
+            {
+                return ! self.isTabBarVisible();
+            },
+            
+            do_cmd_bufferNext: function()
+            {
+                var selItem = self.getSelectedItem();
+                var next    = self.getNextItem(selItem);
+                
+                if (next)
+                {
+                    self.selectItem(next, true);
+                }
+            },
+            
+            is_cmd_bufferPrevious_supported: function()
+            {
+                return ! self.isTabBarVisible();
+            },
+            
+            do_cmd_bufferPrevious: function()
+            {
+                var selItem = self.getSelectedItem();
+                var prev    = self.getPreviousItem(selItem);
+                
+                if (prev)
+                {
+                    self.selectItem(prev, true);
+                }
+            },
 
             // Update commands helper
             _updateCommands: function()
@@ -269,17 +301,19 @@ if (typeof ko.openfiles == 'undefined')
             // Overloading
             supportsCommand: function(command)
             {
-                return ("do_" + command) in this;
+                var method = "is_" + command + "_supported";
+                return (method in this) ? this[method]() : (("do_" + command) in this);
             },
 
             isCommandEnabled: function(command)
             {
                 var method = "is_" + command + "_enabled";
-                return (method in this) ? this["is_" + command + "_enabled"]() : true;
+                return (method in this) ? this[method]() : true;
             },
 
             doCommand: function(command)
             {
+                log.debug("Executing command: " + command);
                 return this["do_" + command]();
             }
         },
@@ -408,8 +442,8 @@ if (typeof ko.openfiles == 'undefined')
             }
 
             // Register controller
-            window.controllers.appendController(this.controller);
-            parent.controllers.appendController(this.controller);
+            window.controllers.insertControllerAt(0, this.controller);
+            parent.controllers.insertControllerAt(0, this.controller);
         },
         
         /**
@@ -722,13 +756,22 @@ if (typeof ko.openfiles == 'undefined')
                 );
             }
             
+            listItem.querySelector('.file-close-button').addEventListener(
+                "mousedown", function(e) {
+                    if (e.which != 1) // Only allow left click
+                        return;
+                    
+                    // Don't bubble mousedown events on the close button
+                    // We don't want to switch to a file that is being closed
+                    e.preventDefault();
+                }.bind(this)
+            );
+            
             // Bind click event on the close button
             listItem.querySelector('.file-close-button').addEventListener(
                 "mouseup", function(e) {
                     if (e.which != 1) // Only allow left click
-                    {
                         return;
-                    }
                     
                     this.onClickItemClose(editorView);
                 }.bind(this)

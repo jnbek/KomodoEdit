@@ -171,6 +171,10 @@ this.restoreWorkspace = function view_restoreWorkspace(currentWindow)
         prefSvc.saveState();
     }
 
+    // Always restore the generic window state (separate from workspace prefs).
+    // Must be called after the Mozilla persist state (onload) is done.
+    setTimeout(ko.uilayout.restoreWindowState, 1);
+
     // If there is a workspace to restore - prompt the user to see if they wish
     // to restore it.
     if (!ko.prefs.hasPref(multiWindowWorkspacePrefName)) {
@@ -193,9 +197,8 @@ this.restoreWorkspace = function view_restoreWorkspace(currentWindow)
 
     // Fix up the stored window numbers
     var windowWorkspacePref = ko.prefs.getPref(multiWindowWorkspacePrefName);
-    let prefIds = {};
-    windowWorkspacePref.getPrefIds(prefIds, {});
-    prefIds = prefIds.value.map(function(n) parseInt(n, 10)).sort(function(a, b) a - b);
+    let prefIds = windowWorkspacePref.getPrefIds();
+    prefIds = prefIds.map(function(n) parseInt(n, 10)).sort(function(a, b) a - b);
     if (prefIds[0] < 1) {
         // Invalid ids; shift everything over :|
         let prefs = prefIds.map(function(n) windowWorkspacePref.getPref(n));
@@ -203,8 +206,7 @@ this.restoreWorkspace = function view_restoreWorkspace(currentWindow)
         for (let i = 1; prefs.length; ++i) {
             windowWorkspacePref.setPref(i, prefs.shift());
         }
-        windowWorkspacePref.getPrefIds(prefIds, {});
-        prefIds = prefIds.value;
+        prefIds = windowWorkspacePref.getPrefIds();
     }
     for each (let prefId in prefIds) {
         let pref = windowWorkspacePref.getPref(prefId);
@@ -233,9 +235,8 @@ this.restoreWorkspace = function view_restoreWorkspace(currentWindow)
 
 this._getNextWorkspaceIndexToRestore = function _getNextWorkspaceIndexToRestore(currIdx) {
     var windowWorkspacePref = ko.prefs.getPref(multiWindowWorkspacePrefName);
-    var prefIds = {};
-    windowWorkspacePref.getPrefIds(prefIds, {});
-    prefIds = prefIds.value.filter(function(i) i > currIdx);
+    var prefIds = windowWorkspacePref.getPrefIds();
+    prefIds = prefIds.filter(function(i) i > currIdx);
     prefIds.sort(function(a, b) { return a - b });
     //dump("_getNextWorkspaceIndexToRestore(" + currIdx +"): prefIds:" + prefIds + "\n");
     var lim = prefIds.length;
@@ -293,9 +294,8 @@ this.getRecentClosedWindowList = function() {
         return [];
     }
     var windowWorkspacePref = ko.prefs.getPref(multiWindowWorkspacePrefName);
-    var prefIds = {};
-    windowWorkspacePref.getPrefIds(prefIds, {});
-    prefIds = prefIds.value.map(function(x) parseInt(x));
+    var prefIds = windowWorkspacePref.getPrefIds();
+    prefIds = prefIds.map(function(x) parseInt(x));
     var loadedWindows = ko.windowManager.getWindows();
     var loadedIDs = loadedWindows.map(function(w) parseInt(w._koNum));
     var mruList = [];
@@ -415,19 +415,12 @@ this._restoreWindowWorkspace =
 {
     try {
         var wko = currentWindow.ko;
-        var cnt = new Object();
-        var ids = new Object();
         var id, elt, pref;
         if (checkWindowBounds && workspace.hasPref('coordinates')) {
             var coordinates = workspace.getPref('coordinates');
             // Must be in a setTimeout, after the window has been loaded,
             // otherwise the window manager may resize or reposition it.
             setTimeout(_restoreWindowPosition, 1, currentWindow, coordinates);
-        }
-        // Opening the Start Page should be before commandment system init and
-        // workspace restoration because it should be the first view opened.
-        if (ko.prefs.getBooleanPref("show_start_page")) {
-            ko.open.startPage();
         }
 
         if (workspace.hasPref('windowNum')) {
@@ -444,9 +437,9 @@ this._restoreWindowWorkspace =
             }
         }
 
-        workspace.getPrefIds(ids, cnt);
-        for (var i = 0; i < ids.value.length; i++) {
-            id = ids.value[i];
+        var ids = workspace.getPrefIds();
+        for (var i = 0; i < ids.length; i++) {
+            id = ids[i];
             elt = currentWindow.document.getElementById(id);
             if (elt) {
                 pref = workspace.getPref(id);
@@ -457,8 +450,7 @@ this._restoreWindowWorkspace =
         if (wko.history) {
             wko.history.restore_prefs(workspace);
         }
-        // Don't open startPage here (bug 87854)
-        this.initializeEssentials(currentWindow, false);
+        this.initializeEssentials(currentWindow);
 
         // Projects depends on places, so open it after Places is initialized.
         if (workspace.hasPref('opened_projects_v7')) {
@@ -493,10 +485,11 @@ this.waitForProjectManager = function(callback) {
     ko.widgets.getWidgetAsync('placesViewbox', function() {
             var delayFunc;
             var limit = 100; // iterations
-            var delay = 50;  // time in msec
+            var delay = 100;  // time in msec
             delayFunc = function(tryNum) {
                 try {
-                    if (ko.projects.manager.viewMgr.owner.projectsTreeView) {
+                    if (ko.toolbox2 && ko.toolbox2.manager &&
+                        ko.projects.manager.viewMgr.owner.projectsTreeView) {
                         callback();
                         return;
                     }
@@ -514,18 +507,14 @@ this.waitForProjectManager = function(callback) {
 };
 
 this._calledInitializeEssentials = false;
-this.initializeEssentials = function(currentWindow, showStartPage /*true*/) {
+this.initializeEssentials = function(currentWindow) {
     if (this._calledInitializeEssentials) {
         return;
     }
-    if (typeof(showStartPage) == "undefined") showStartPage=true;
     var infoService = Components.classes["@activestate.com/koInfoService;1"].
                                  getService(Components.interfaces.koIInfoService);
     if (!("__koNum" in currentWindow.ko.main)) {
         currentWindow._koNum = infoService.nextWindowNum();
-    }
-    if (showStartPage && ko.prefs.getBooleanPref("show_start_page")) {
-        ko.open.startPage();
     }
     xtk.domutils.fireEvent(window, 'workspace_restored');
     this._calledInitializeEssentials = true;
@@ -663,9 +652,7 @@ this.markClosedWindows = function() {
         return;
     }
     var windowWorkspacePref = ko.prefs.getPref(multiWindowWorkspacePrefName);
-    var prefIds = {};
-    windowWorkspacePref.getPrefIds(prefIds, {});
-    prefIds = prefIds.value;
+    var prefIds = windowWorkspacePref.getPrefIds();
     var lim = prefIds.length;
     var workspacePrefs = [];
     var pref;
@@ -689,4 +676,147 @@ this.markClosedWindows = function() {
     }
 };
 
+/**
+* Collect path to all open files
+* @returns (Array) all open file paths
+*/
+this.collectOpenViewPaths = function(){
+    var curPaths = [];
+    var curViews = ko.views.manager.getAllViews();
+    for (var i = 0; i < curViews.length; i++){
+        if (curViews[i].getAttribute("type") != "editor") {
+            continue;
+        }
+        try{
+            var viewPath = curViews[i].koDoc.file.path;
+        } catch (TypeError) {
+            workLog.debug(e,
+                          "'No koDoc': Could not load file path: " + viewPath
+                          );
+            // Might as well skip this loop with no file path
+            continue;
+        }
+        curPaths.push(viewPath);
+    }
+    return curPaths;
+}
+
+function getLastSaveLocation() {
+    var prevSaveFile = ko.mru.get("mruWorkspaceList");
+    var defaultName = null;
+    var defaultDir = null;
+    if (prevSaveFile) {
+        // convert the path string into a file object, get dirname and basename
+        defaultDir = ko.uriparse.dirName(prevSaveFile);
+        defaultName = ko.uriparse.baseName(prevSaveFile);
+    }
+    return { "defaultName": defaultName, "defaultDir": defaultDir };
+}
+/**
+* Open dialog to allow user to pick location to save workspace file
+* @returns {String} path to save location
+*/
+this.pickSpaceSavePath = function() {
+    var {defaultName, defaultDir} = getLastSaveLocation();
+    if (!defaultName) {
+        defaultName = "MySpace.komodospace";
+    }
+    var saveFilePath = ko.filepicker.saveFile(defaultDir,
+                                           defaultName,
+                                           "Save Workspace..."
+                                           //["Workspace"] // I doubt it's this easy to show only *.workspace files.
+                                           )
+    return saveFilePath;
+}
+
+/**
+* Create file at user specified location with all currentView paths
+*/
+this.save = function (filepath){
+    if (!filepath) {
+        filepath = this.pickSpaceSavePath();
+        if (filepath == null) {
+            return;
+        }   
+    }
+    var workspace = this.collectOpenViewPaths();
+    var fileEx = Components.classes["@activestate.com/koFileEx;1"]
+                .createInstance(Components.interfaces.koIFileEx);
+    fileEx.URI = filepath;
+    fileEx.open('w');
+    fileEx.puts(JSON.stringify(workspace));
+    fileEx.close();
+
+    // Save in a MRU for restoring operation.
+    if (!ko.prefs.hasPref("mruWorkspaceSize")) {
+        ko.prefs.setLong("mruWorkspaceSize", 10);
+    }
+    ko.mru.add("mruWorkspaceList", fileEx.URI);
+}
+
+/**
+* Open a ko.filepicker to grab the workspace file the user wants to open
+* @returns {String} file path to workspace file
+*/
+this.pickSpaceFileToOpen = function () {
+    var {defaultName, defaultDir} = getLastSaveLocation();
+    var spaceFile = ko.filepicker.browseForFile(defaultDir,
+                                           defaultName,
+                                           "Choose workspace file"
+                                           //"komodospace"  // Not as easy as I
+                                                            // thought.  
+                                           //["komodospace",["*.komodospace"]]
+                                           )
+    return spaceFile;
+}
+
+/**
+* Load *.komodospace file, convert to list of paths
+* @argument {String} path to workspace file
+* @returns {JSON Array} List of paths to files in saved workspace
+*/
+this.loadWorkspaceFile =  function(filepath){
+    if (!filepath) {
+        filepath = this.pickSpaceFileToOpen();
+        // If the user cancels out of the dialog filepath will be null so bail
+        if (!filepath) {
+            return null;
+        }
+    }
+    if (filepath) {
+        var spaceFile = Components.classes["@activestate.com/koFileEx;1"]
+                        .createInstance(Components.interfaces.koIFileEx);
+        spaceFile.URI = filepath;
+        try {
+            spaceFile.open("r");
+            // It should be a JSON file.
+            return JSON.parse(spaceFile.readfile());
+        } catch(ex) {
+            require("notify/notify").send("Could not load workspace file: " + spaceFile.baseName,
+                                          "workspace", {priority: "warning"});
+        } finally {
+            spaceFile.close();
+        }
+    } else {
+        alert("Choose a *.komodospace file.");
+    }
+    return null;
+}
+
+/**
+* Take a list of URIs and load the files into Komodo based on those paths.
+* @argument {Array} list of file paths
+*/
+this.open = function(filepath){
+    var jsonPaths = this.loadWorkspaceFile(filepath);
+    if (!jsonPaths) {
+        // didn't get a file for some reason, might as well bail.
+        return;
+    }
+    try{
+        ko.open.multipleURIs(jsonPaths);
+    } catch(e){
+        workLog.warn("Could not load file from workspace file:  ERROR: ", e)
+    }
+}
 }).apply(ko.workspace);

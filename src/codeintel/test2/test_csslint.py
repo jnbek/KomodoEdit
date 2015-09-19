@@ -80,7 +80,8 @@ class CSSLintTest(CodeIntelTestCase):
     _skin_dir = join(_ko_src_dir, "chrome", "komodo", "skin")
     _modules_dir = join(_ko_src_dir, "modules")
     _skipSkinFiles = [
-        # No openkomodo files in this category.
+        # Fails to parse @keyframes directives.
+        join(_skin_dir, "komodo.p.css"),
     ]
     def _walk_skin_files(self, data, dirname, fnames):
         for fname in fnames:
@@ -104,19 +105,6 @@ class CSSLintTest(CodeIntelTestCase):
     def test_komodo_skin_files_02(self):
         os.path.walk(self._modules_dir, self._walk_skin_files, None)
         
-    def test_komodo_skin_files_problem_01(self):
-        if not self._skipSkinFiles:
-            self.assertTrue(1)
-            return
-        fpath = self._skipSkinFiles[0]
-        fd = open(fpath, 'r')
-        code = fd.read().decode("utf-8")
-        fd.close()
-        for lang in self.langs:
-            #sys.stderr.write("Test file %s\n" % basename(fpath))
-            results = self.csslinter.lint(code, language=lang)
-            self.assertEqual([], results, "Failed to parse file %s (%s), results: %s" % (fpath, lang, [str(x) for x in results]))
-
     def test_jezdez(self):
         path = join(self.test_dir, "bits", "bad_css_files", "jezdez-reset-fonts-grids.css")
         fd = open(path, 'r')

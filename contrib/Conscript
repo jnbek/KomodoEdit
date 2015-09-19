@@ -115,7 +115,8 @@ $consLocal->InstallRecursive("$supportDir/catalogs",
                         ('\.svn'));
 
 
-#----  Komodo's SFTP support uses 'paramiko' which, in turn, uses PyCrypto.
+#---- Komodo's SFTP support uses 'paramiko' which, in turn, uses PyCrypto and
+#     ecdsa.
 # PyCrypto (http://www.amk.ca/python/code/crypto)
 my $landmark = "$komodoPythonUtilsDir/Crypto/__init__.py";
 $consLocal->Command($landmark,
@@ -125,6 +126,12 @@ $consLocal->Command($landmark,
                 cd %1:d && $siloedPython %1:f install --skip-build --install-lib=$komodoPythonUtilsDir
                ));
 $consLocal->DependsRecursive($landmark, "pycrypto", ("build", '\.svn'));
+
+# ecdsa (http://github.com/warner/python-ecdsa)
+my $landmark = "$komodoPythonUtilsDir/ecdsa";
+$consLocal->InstallRecursive($landmark,
+                        #XXX must be absolute path (bug in InstallRecursive)
+                        cwd()."/contrib/ecdsa/ecdsa");
 
 # paramiko (http://www.lag.net/paramiko/)
 # See bug 73155 for a long discussion on why we are NOT using
@@ -137,7 +144,7 @@ $consLocal->InstallRecursive($landmark,
 
 
 
-if ($withJSLib or $buildFlavour eq "dev") {
+if ($withJSLib) {
     #---- jslib
     # Some of Komodo's optional extensions use jslib:
     #   komodo_javascript_debugger (Komodo's FF extension for JS debugging)
@@ -424,6 +431,9 @@ $consLocal->InstallAs("$mozChromeDir/komodo/content/contrib/less.js", "smallstuf
 
 # commonjs
 $consLocal->InstallAs("$mozChromeDir/komodo/content/contrib/commonjs/dot.js", "commonjs/dot.js");
+$consLocal->InstallAs("$mozChromeDir/komodo/content/contrib/commonjs/randomColor.js", "commonjs/randomColor.js");
+$consLocal->InstallAs("$mozChromeDir/komodo/content/contrib/commonjs/underscore.js", "commonjs/underscore.js");
+$consLocal->InstallAs("$mozChromeDir/komodo/content/contrib/commonjs/marked.js", "commonjs/marked.js");
 
 #----  Watchdog for file notifcations
 if ($withWatchdogFSNotifications) {
@@ -550,6 +560,12 @@ if ($withDocs) {
 if ($platform eq "win") {
     $consLocal->InstallPythonUtility('smallstuff/winprocess.py');
 }
+
+ 
+# Bugsnag
+$consLocal->InstallRecursive("$komodoPythonUtilsDir/bugsnag",
+                        #XXX must be absolute path (bug in InstallRecursive)
+                        cwd()."/contrib/bugsnag-python/2.3.1");
 
 if ($platform ne "win") {
     #---- Newer subprocess module back-ported from Python 3.2.

@@ -60,6 +60,17 @@ function loadExecutableIntoInterpreterList(availInterpListID) {
     return false;
 }
 
+function loadExecutableIntoTextField(fieldId) {
+    var field = document.getElementById(fieldId);
+    var currentPath = getDirectoryFromTextObject(field);
+    var path = ko.filepicker.browseForExeFile(currentPath);
+    if (path) {
+        field.value = path;
+        return true;
+    }
+    return false;
+}
+
 function loadFilePathIntoTextObject(fieldId) {
     var field = document.getElementById(fieldId);
     var path = ko.filepicker.saveFile(null, field.value);
@@ -77,7 +88,7 @@ function ignorePrefPageOKFailure(prefset, context, message) {
     var ignoreText = bundle.GetStringFromName("ignore.buttonText");
     var buttons = [fixText, ignoreText];
     var response = fixText;
-    var res = ko.dialogs.customButtons(prompt,
+    var res = getKoObject("dialogs").customButtons(prompt,
                                        buttons,
                                        response,
                                        text,
@@ -105,8 +116,8 @@ function checkValidInterpreterSetting(prefset,
     if (typeof(languagePrefPageId) == "undefined") {
         languagePrefPageId = programmingLanguage.toLowerCase() + "Item";
     }
-    var defaultInterp = prefset.getStringPref(interpreterPrefName);
-    if (!defaultInterp) {
+    var defaultInterp = prefset.getString(interpreterPrefName, "");
+    if (!defaultInterp || defaultInterp == "") {
         return true;
     }
     var koSysUtils = Components.classes["@activestate.com/koSysUtils;1"].

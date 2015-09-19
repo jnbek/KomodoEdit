@@ -71,7 +71,7 @@
                 <hbox>
                     <button class="button-link list-item"
                             label="&more.label;"
-                            href="http://www.youtube.com/user/ActiveStateSoftware/videos" />
+                            href="http://komodoide.com/screencasts/" />
                 </hbox>
 
                 <!-- INSTALL EXTENSIONS -->
@@ -79,31 +79,31 @@
                 <hbox>
                     <button class="button-link list-item"
                             label="&extOne.label;"
-                            href="&extOne.href;"/>
+                            oncommand="window.opener.require('scope-packages/packages').openCategory('addons')"/>
                     <description value="&extOne.description;" flex="1"/>
                 </hbox>
                 <hbox>
                     <button class="button-link list-item"
                             label="&extTwo.label;"
-                            href="&extTwo.href;"/>
+                            oncommand="window.opener.require('scope-packages/packages').openCategory('macros')"/>
                     <description value="&extTwo.description;" flex="1"/>
                 </hbox>
                 <hbox>
                     <button class="button-link list-item"
                             label="&extThree.label;"
-                            href="&extThree.href;"/>
+                            oncommand="window.opener.require('scope-packages/packages').openCategory('schemes')"/>
                     <description value="&extThree.description;" flex="1"/>
                 </hbox>
                 <hbox>
                     <button class="button-link list-item"
                             label="&more.label;"
-                            href="http://community.activestate.com/addons"/>
+                            href="http://komodoide.com/packages/"/>
                 </hbox>
 
                 <hbox id="docBox">
                     <button class="button-link"
                             label="&readDoc.label;"
-                            href="http://docs.activestate.com/komodo/"/>
+                            href="http://docs.activestate.com/komodo/latest/"/>
                 </hbox>
             </vbox>
             <vbox id="pane">
@@ -111,7 +111,7 @@
                 <description>&whatsNew.description;</description>
                 <button class="button-link"
                         label="&readMore.label;"
-                        href="http://www.activestate.com/komodo-ide/whats-new"/>
+                        href="http://komodoide.com/features/"/>
 
                 <label class="sub-header" id="needHelp" value="&needHelp.label;"/>
                 <description>&needHelp.description;</description>
@@ -121,7 +121,7 @@
                         href="http://kiwiirc.com/client/irc.mozilla.org/komodo?nick=komodo_user"/>
                 <button class="button-link list-item"
                         label="&readForums.label;"
-                        href="http://community.activestate.com/forums/komodo"/>
+                        href="http://forum.komodoide.com/"/>
                 <button class="button-link list-item"
                         label="&reportBug.label;"
                         oncommand="ko.browse.browseTag('bugs')"/>

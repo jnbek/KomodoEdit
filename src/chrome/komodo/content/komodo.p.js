@@ -91,6 +91,64 @@ this.quitApplication = function() {
     }
 };
 
+this.restartWithFlag = function(flag) {
+    var koDirSvc = Cc["@activestate.com/koDirs;1"].getService()
+    var ioFile = require('sdk/io/file');
+    
+    switch (flag)
+    {
+        case 'tempProfile':
+        case 'tempNoAddons':
+        case 'tempNoToolbox':
+            if ( ! require("ko/dialogs").confirm("Komodo will restart, to go back to your current setup simply restart Komodo again."))
+                return
+            break;
+        case 'cleanProfile':
+            var message = "This will reset all your settings, including addons, keybindings and color schemes. Are you sure you want to do this?" +
+                          "Your current profile folder will be backed up at " + koDirSvc.userDataDir + "-backup";
+            if ( ! require("ko/dialogs").confirm(message))
+                return
+            break;
+        case 'cleanDocState':
+            var message = "This will reset all your file settings, all your files will inherit their settings from your global or project level preferences.";
+            if ( ! require("ko/dialogs").confirm(message))
+                return
+            break;
+        case 'cleanViewState':
+            var message = "This will reset your recently used files, tab ordering, panel configuration, etc.";
+            if ( ! require("ko/dialogs").confirm(message))
+                return
+            break;
+        case 'cleanCodeintel':
+            var message = "This will reset your CodeIntel database, prompting Komodo to re-generate it from scratch. Depending on the size of your project this may take a while.";
+            if ( ! require("ko/dialogs").confirm(message))
+                return
+            break;
+        case 'cleanCaches':
+            var message = "This will reset Komodo's main caches, prompting it to regenerate any cached data.";
+            if ( ! require("ko/dialogs").confirm(message))
+                return
+            break;
+    }
+    
+    path = ioFile.join(koDirSvc.userDataDir, "flags");
+    
+    var f= ioFile.open(path, "w");
+    f.write(flag);
+    f.close();
+    
+    let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].
+                     createInstance(Ci.nsISupportsPRBool);
+    Services.obs.notifyObservers(cancelQuit, "quit-application-requested",
+                                 "restart");
+    if (cancelQuit.data)
+        return; // somebody canceled our quit request
+
+    let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"].
+                     getService(Ci.nsIAppStartup);
+    appStartup.quit(Ci.nsIAppStartup.eAttemptQuit |  Ci.nsIAppStartup.eRestart);
+}
+
 /**
  * Window "close" event handler to close the Komodo window and, if it is the
  * last one, quit.
@@ -314,7 +372,6 @@ function onloadDelay() {
         // Used by perf_timeline.perf_startup. Mark before
         // commandmentSvc.initialize() because that will immediately start
         // executing queued up commandments.
-        ko.uilayout.onloadDelayed(); // if closed fullscreen, maximize
 
         // Fix for getting keybindings working in new windows - bug 87979.
         // TODO: Better fix needed?
@@ -333,6 +390,7 @@ function onloadDelay() {
     require("ko/benchmark").endTiming("workspace.restore");
 // #endif
 
+        ko.uilayout.onload();
         ko.history.init();
 
     } catch(ex) {
@@ -446,9 +504,17 @@ window.onload = function(event) {
                                   function() ko.toolbox2.onload());
         ko.projects.onload();
 
-        ko.uilayout.onload();
-
+        // For onloadDelay, on Mac we use a setTimeout, to avoid plugin
+        // initialization issues - bug 105056. Other platforms work correctly
+        // without the needed for the timeout.
+// #if PLATFORM == "darwin"
+        setTimeout(function() {
+            onloadDelay();
+        }, 1);
+// #else
         onloadDelay();
+// #endif
+
     } catch (e) {
         _log.exception(e,"Error doing KomodoOnLoad:");
         throw e;

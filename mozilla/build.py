@@ -424,14 +424,6 @@ def _getAutoconfVersion(autoconf=None):
     return tuple(version)
 
 
-def _determineMozCoProject(mozApp):
-    if mozApp == "komodo":
-        return "xulrunner"
-    names = [ s.strip() for s in mozApp.split(",") ]
-    if "xulrunner" not in names:
-        names.append("xulrunner")
-    return ",".join(names)
-
 def _setupMozillaEnv():
     """Setup the required environment variables for building Mozilla."""
     config = _importConfig()
@@ -447,8 +439,6 @@ def _setupMozillaEnv():
     os.environ["DISABLE_TESTS"] = "1"
     os.environ["MOZ_BITS"] = "32"
     os.environ["FORCE_BUILD_REFCNT_LOGGING"] = "0"
-    os.environ["MOZ_CURRENT_PROJECT"] \
-        = os.environ["MOZ_CO_PROJECT"] = _determineMozCoProject(config.mozApp)
 
     os.environ["MOZBUILD_STATE_PATH"] = join(config.buildDir, "moz-state")
     
@@ -459,7 +449,36 @@ def _setupMozillaEnv():
             os.environ['CFLAGS'] = "-gdwarf-2"
             os.environ['CXXFLAGS'] = "-gdwarf-2"
 
-    if sys.platform != "win32":
+    if sys.platform == "win32":
+        # Important: Tell make to use msys
+        os.environ["MSYSTEM"] = "MINGW32"
+
+        # Mozilla SDK checks fails when using msys perl (not sure why), so we
+        # ensure ActivePerl is the first perl on the path.
+        p = subprocess.Popen("where perl", shell=True, stdout=subprocess.PIPE)
+        stdout, _ = p.communicate()
+        perl_exes = stdout.splitlines(0)
+        if perl_exes and "msys" in perl_exes[0]:
+            for alt_perl in perl_exes[1:]:
+                if "msys" not in alt_perl:
+                    # Insert ActivePerl first on the path.
+                    paths = os.environ.get("PATH", "").split(os.pathsep)
+                    paths.insert(0, dirname(alt_perl))
+                    os.environ["PATH"] = os.pathsep.join(paths)
+                    log.info("Placing non-msys perl first on path: %s", alt_perl)
+                    break
+            else:
+                log.warn("Could not find non-msys perl - Windows SDK check may fail")
+        else:
+            log.warn("Could not find msys perl")
+
+        # This is in conflict with above!
+        # Mozilla requires using Msys perl rather than AS perl; use the one
+        # bundled with MozillaBuild
+        if not "PERL" in os.environ:
+            os.environ["PERL"] = os.path.join(os.environ["MOZILLABUILD"],
+                                              "msys", "bin", "perl.exe").replace("\\", "/")
+    else:
         #TODO: drop what isn't necessary here
         
         #set MOZ_SRC=/export/home/jeffh/p4/Mozilla-devel/build/moz...
@@ -481,17 +500,18 @@ def _setupMozillaEnv():
                              "to build mozilla."
                              % (autoconf, verStr))
 
-        # The Python Framework is used on OSX
-        if sys.platform == "darwin":
-            return
-    else:
-        # Mozilla requires using Msys perl rather than AS perl; use the one
-        # bundled with MozillaBuild
-        if not "PERL" in os.environ:
-            os.environ["PERL"] = os.path.join(os.environ["MOZILLABUILD"],
-                                              "msys", "bin", "perl.exe").replace("\\", "/")
-        # Tell pymake to use msys
-        os.environ["MSYSTEM"] = "MINGW32"
+        # zsh shell fails when configuring mozilla - so force bash instead.
+        if "zsh" in os.environ.get("SHELL", ""):
+            log.info("shell: zsh detected, replacing SHELL environment with bash")
+            os.environ["SHELL"] = "/bin/bash"
+
+    # Check for Centos 6, and add appropriate LDFLAGS.
+    if sys.platform == "linux" and exists("/etc/redhat-release"):
+        contents = file("/etc/redhat-release").read()
+        if "CentOS release 6." in contents:
+            ldflags = os.environ.get('LDFLAGS', '').split(' ')
+            ldflags.append("-lrt")
+            os.environ['LDFLAGS'] = ' '.join(ldflags)
 
 
 def _applyMozillaPatch(patchFile, mozSrcDir):
@@ -577,7 +597,7 @@ Patch '%s' will not apply cleanly:
         raise BuildError("Error applying patch '%s': argv=%r, cwd=%r"\
                          "retval=%r" % (patchFile, argv, cwd, retval))
 
-def _getMozSrcInfo(scheme, mozApp):
+def _getMozSrcInfo(scheme):
     """Return information about how to get the Mozilla source to use for
     building.
     
@@ -592,12 +612,10 @@ def _getMozSrcInfo(scheme, mozApp):
                     A path to a mozilla/firefox source tarball to use
                     for the source.
 
-        "mozApp" must be one of ("komodo", "xulrunner")
-
     The return value is a dict with the suggested configuration
     variables identifying the mozilla source.
         {
-         'mozVer':          The Mozilla version number as a float, i.e. 31.0
+         'mozVer':          The Mozilla version number as a float, i.e. 35.0
          'mozSrcType':      <'hg', 'git' or 'tarball'>,
          'mozSrcName':      <a short string to *loosely* describing the mozilla src>,
          # The following only if mozSrcType==hg:
@@ -619,14 +637,8 @@ def _getMozSrcInfo(scheme, mozApp):
             mozSrcTarball=scheme,
         )
 
-        if mozApp in ("komodo", "browser"):
-            patterns = [re.compile("^firefox-(.*?)-source%s$"
-                                 % re.escape(suffix)),
-                        re.compile("^xulrunner-(.*?)-source%s$"
-                                 % re.escape(suffix))]
-        else:
-            raise BuildError("do we use the 'firefox-*-source.tar.gz' "
-                             "tarballs for mozApp='%s' builds?" % mozApp)
+        patterns = [re.compile("^firefox-(.*?)-source%s$"
+                             % re.escape(suffix))]
         for pattern in patterns:
             scheme_basename = basename(scheme)
             match = pattern.match(scheme_basename)
@@ -669,6 +681,21 @@ def _getMozSrcInfo(scheme, mozApp):
         # source.
         config["mozSrcName"] = "moz%s" % (config["mozSrcHgRepo"], )
         config["mozVer"] = round(int(config["mozSrcHgRepo"]) / 100.0, 2)
+
+    elif re.match(r"^FIREFOX_.*_RELEASE$", scheme): # TAG
+        # Determine the version from the tag.
+        match = re.match(r"^FIREFOX_(?P<ver>\d+\_\d+\_\d+)(?P<type>esr)?_RELEASE$", scheme)
+        if not match:
+            raise BuildError("Unexpected mozSrc tag %r" % scheme)
+        config["mozSrcType"] = "hg"
+        config["mozSrcHgTag"] = scheme
+        ver = match.group("ver").replace("_", "")
+        hgtype = match.group("type") or ""
+        config["mozVer"] = round(int(ver) / 100.0, 2)
+        config["mozSrcHgRepo"] = ver + hgtype
+        config["mozSrcName"] = "moz%s" % (config["mozSrcHgRepo"], )
+    else:
+        raise BuildError("Unexpected mozSrc %r" % scheme)
 
     return config
 
@@ -860,22 +887,17 @@ def target_configure(argv):
 
             Scheme      Tag                     KoVer   FFVer   MozVer
             ----------  ----------------------  ------  ------  ----------
-            2400        FIREFOX_24_0_0_RELEASE  8.1.X  24.0.X   24.00
-            3100        FIREFOX_31_0_0_RELEASE  9.0.X  31.0.X   31.00
+            3100        FIREFOX_31_0_RELEASE    9.0.X  31.0.X   31.00
+            3500        FIREFOX_35_0_RELEASE    9.0.X  35.0.X   35.00
 
     Other Options:
         -r, --reconfigure
             Re-run configuration with the previous config options.
 
         --komodo (the default)
-        --xulrunner
         --suite (i.e. the Mozilla suite)
         --browser (i.e. Firefox)
-        --moz-app=<komodo|xulrunner|suite|browser>
-            Which moz-application to build? The stub komodo app (in prep
-            for full Komodo builds), xulrunner, Firefox (a.k.a. the
-            browser) or the Mozilla suite?  This is called the "mozApp".
-
+        --moz-app=komodo (the only possible choice)
         --debug, --release, --symbols
             specify mozilla build-type (default: release)
 
@@ -938,14 +960,10 @@ def target_configure(argv):
             specified then tests are NOT built for release builds and
             ARE for debug builds.
 
-        --official
-            build a clean unpatched mozilla or firefox
-            (Note: I don't trust that this is what you get. --TM)
-
-        --compiler=<vc9|vc10|vc11>  # Windows-only
+        --compiler=<vc9|vc11>  # Windows-only
             There is *some* support for building Mozilla/Firefox with
             the non-default compiler on Windows. Currently we build with
-            VC9 and this is the default.
+            VC11 and this is the default.
 
         --gcc=<gcc44>  # Unix-only
         --gxx=<g++44>  # Unix-only
@@ -981,13 +999,13 @@ def target_configure(argv):
         "srcTreeName": None,
         "buildDir": abspath("build"),
         "mozconfig": None,
-        "mozApp": "komodo",
         "jsStandalone": False,
-        "mozSrcScheme": "3100",
-        "official": False,      # i.e. a plain Mozilla/Firefox build w/o Komodo stuff
+        "mozSrcScheme": "3500",
         "withCrashReportSymbols": False,
+        "withPGOGeneration": False,
+        "withPGOCollection": False,
         "stripBuild": False,
-        "compiler": None, # Windows-only; 'vc9' (the default)
+        "compiler": None, # Windows-only; 'vc11' (the default)
         "gcc": None, # Unix-only; 'gcc44' (the default)
         "gxx": None, # Unix-only; 'g++44' (the default)
         "mozObjDir": None,
@@ -995,11 +1013,7 @@ def target_configure(argv):
         "patchesDirs": ["patches-new"],
     }
 
-    mozBuildOptions = [
-       'disable-installer',
-       # prevents a "C++ compiler has -pedantic long long bug" configure error
-       'disable-pedantic',
-    ]
+    mozBuildOptions = []
     if sys.platform.startswith("linux"):
         # Avoid having a dependency on libstdc++
         mozBuildOptions.append('enable-stdcxx-compat')
@@ -1018,8 +1032,10 @@ def target_configure(argv):
              "komodo-version=", "python=", "python-version=",
              "moz-src=",
              "blessed", "universal",
-             "komodo", "xulrunner", "suite", "browser", "moz-app=",
+             "komodo", "moz-app=",
              "with-crashreport-symbols",
+             "with-pgo-generation",
+             "with-pgo-collection",
              "strip", "no-strip",
              "no-mar",
              "with-tests", "without-tests", 
@@ -1029,7 +1045,6 @@ def target_configure(argv):
              "src-tree-name=",
              "build-name=",  # this is deprecated, use --src-tree-name
              "build-tag=",
-             "official",
              "p4-changenum=",
              "compiler=", "gcc=", "gxx=",
              "moz-objdir="])
@@ -1057,21 +1072,8 @@ def target_configure(argv):
             if sys.platform != "darwin":
                 raise BuildError("Universal builds are only supported on Mac OSX")
             config["universal"] = True
-        elif opt == "--komodo":
-            config["mozApp"] = "komodo"
-        elif opt == "--xulrunner":
-            config["mozApp"] = "xulrunner"
-        elif opt == "--suite":
-            config["mozApp"] = "suite"
-        elif opt == "--browser":
-            config["mozApp"] = "browser"
-        elif opt == "--moz-app":
-            config["mozApp"] = optarg
         elif opt == "--js":
             config["jsStandalone"] = True
-        elif opt == "--official":
-            config["official"] = True
-            config["komodoVersion"] = None
         elif opt == "--no-mar":
             config["enableMar"] = False
         elif opt in ("-k", "--komodo-version"):
@@ -1108,6 +1110,10 @@ def target_configure(argv):
                 mozBuildExtensions.append(ext)
         elif opt == "--with-crashreport-symbols":
             config["withCrashReportSymbols"] = True
+        elif opt == "--with-pgo-generation":
+            config["withPGOGeneration"] = True
+        elif opt == "--with-pgo-collection":
+            config["withPGOCollection"] = True
         elif opt == "--with-tests":
             config["withTests"] = True
         elif opt == "--without-tests":
@@ -1120,7 +1126,7 @@ def target_configure(argv):
         elif opt == "--compiler":
             assert sys.platform == "win32", \
                 "'--compiler' configure option is only supported on Windows"
-            validCompilers = ('vc9', 'vc10', 'vc11')
+            validCompilers = ('vc9', 'vc11')
             assert optarg in validCompilers, \
                 "invalid compiler value (%s), must be one of: %s"\
                 % (optarg, validCompilers)
@@ -1141,7 +1147,6 @@ def target_configure(argv):
     for name, value in config.items():
         if isinstance(value, Exception):
             raise value
-    assert config["mozApp"] in ("komodo", "xulrunner", "suite", "browser")
 
     if sys.platform.startswith("win") and config["buildDir"][1] == ":":
         # NSS builds fail if the object directory doesn't use a lower case
@@ -1152,7 +1157,7 @@ def target_configure(argv):
     # options.
 
     config.update(
-        _getMozSrcInfo(config["mozSrcScheme"], config["mozApp"])
+        _getMozSrcInfo(config["mozSrcScheme"])
     )
 
     # Finish determining the configuration: some defaults depend on user
@@ -1161,40 +1166,21 @@ def target_configure(argv):
     if sys.platform == "darwin":
         # See http://developer.mozilla.org/en/docs/Mac_OS_X_Build_Prerequisites#.mozconfig_Options_and_Other_Tunables
         # for issues with setting:
-        #   ac_add_options --with-macos-sdk=/path/to/SDK
         #   ac_add_options --enable-macos-target=version
-        #
-        # building on panther, we must now specify --with-macos-sdk= due to
-        # changes in quicktime (yes, it affects us).  So, for any ppc build,
-        # we will use the 10.2.8 sdk
-        # If building on panther, we do not want to use with-macos-sdk,
-        # it is broken.
 
         osx_major_ver = int(os.uname()[2].split(".")[0])
         # The osx_major_ver has the following values:
+        #   14: Yosemite (OS X 10.10)
+        #   13: Mavericks (OS X 10.9)
         #   12: Mountain Lion (OS X 10.8)
         #   11: Lion (OS X 10.7)
         #   10: Snow Leopard (OS X 10.6)
-        #   9:  Leopard (OS X 10.5)
-        #   8:  Tiger (OS X 10.4)
 
         mozVer = config["mozVer"]
 
-        # Komodo 8 defaults to building with the MacOSX 10.6 SDK.
-        macosx_min_version = "10.6"
-        sdk = "/Developer/SDKs/MacOSX%s.sdk" % (macosx_min_version, )
-        if not os.path.exists(sdk):
-            # Newer installs of Xcode use a different location - try that now.
-            for sdk_ver in ("10.7", "10.8"):
-                sdk = "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX%s.sdk" % (sdk_ver, )
-                if os.path.exists(sdk):
-                    break
-            else:
-                raise BuildError("Unable to locate the MacOSX sdk - you "
-                                 "probably need to install Xcode.")
-
+        # Komodo 9 supports Mavericks and higher.
+        macosx_min_version = "10.9"
         mozBuildOptions.append("enable-macos-target=%s" % macosx_min_version)
-        mozBuildOptions.append("with-macos-sdk=%s" % sdk)
 
         gcc = config.get("gcc") or os.environ.get("CC")
         gxx = config.get("gxx") or os.environ.get("CXX")
@@ -1276,10 +1262,12 @@ def target_configure(argv):
         config["gxx"] = gxx
         mozRawOptions.append("export CC=%s" % gcc)
         mozRawOptions.append("export CXX=%s" % gxx)
+        # Try to enable gold linker where available.
+        mozBuildOptions.append('enable-gold')
 
     config["changenum"] = _getChangeNum()
     if sys.platform == "win32":
-        defaultWinCompiler = "vc9"
+        defaultWinCompiler = "vc11"
         if not config["compiler"]:
             # Attempt to auto-detect the compiler version number
             try:
@@ -1295,10 +1283,12 @@ def target_configure(argv):
                 version = None # Failed to auto-detect version
             config["compiler"] = {
                 # version numbers taken from https://en.wikipedia.org/wiki/Visual_C++
-                "14": "vc8",
-                "15": "vc9",
-                "16": "vc10",
-                "17": "vc11",
+                "14": "vc8",   # Visual C++ 2005
+                "15": "vc9",   # Visual C++ 2008
+                "16": "vc10",  # Visual C++ 2010
+                "17": "vc11",  # Visual C++ 2012
+                "18": "vc12",  # Visual C++ 2013
+                "19": "vc13",  # Visual C++ 2015
             }.get(version, defaultWinCompiler)
         if config["compiler"] != defaultWinCompiler:
             config["buildOpt"].append(config["compiler"])
@@ -1369,16 +1359,10 @@ def target_configure(argv):
     # objdir (encodes build config), and full build name (for the packages)
     # unless specifically given.
     shortBuildType = {"release": "rel", "debug": "dbg", "symbols": "sym"}[buildType]
-    shortMozApp = {"komodo": "ko", "xulrunner": "xulr",
-                   "suite": "ste", "browser": "ff"}[config["mozApp"]]
     buildOpts = config["buildOpt"][:]
     buildOpts.sort()
-    if config["official"]:
-        srcTreeNameBits = [config["mozSrcName"]]
-        config["patchesDirs"] = ["patches-official"]
-    else:
-        srcTreeNameBits = [config["mozSrcName"], "ko"+config["komodoVersion"]]
-    mozObjDirBits = [shortMozApp, shortBuildType] + buildOpts
+    srcTreeNameBits = [config["mozSrcName"], "ko"+config["komodoVersion"]]
+    mozObjDirBits = ["ko", shortBuildType] + buildOpts
     if config["buildTag"]:
         srcTreeNameBits.append(config["buildTag"])
     if config["srcTreeName"] is None:
@@ -1390,9 +1374,8 @@ def target_configure(argv):
     # of '.mozconfig') -- unless specifically given.
     mozVer = config["mozVer"]
     if config["mozconfig"] is None:
-        if not config["official"]:
-            # help viewer was removed from normal builds, enable it for Komodo
-            mozBuildOptions.append("enable-help-viewer")
+        # help viewer was removed from normal builds, enable it for Komodo
+        mozBuildOptions.append("enable-help-viewer")
 
         if not config.get("withTests", False):
             mozBuildOptions.append("disable-tests")
@@ -1418,29 +1401,8 @@ def target_configure(argv):
                 mozRawOptions.append('export CFLAGS="-gdwarf-2"')
                 mozRawOptions.append('export CXXFLAGS="-gdwarf-2"')
 
-        if config["mozApp"] in ("browser", "komodo"):
-            # Needed for building update-service packages.
-            mozBuildOptions.append('enable-update-packaging')
-            
-            # these extensions are built into firefox, we need to figure out
-            # what we dont want or need.
-            mozBuildExtensions.append('cookie')
-            mozBuildExtensions.append('spellcheck')
-            
-            # XXX these fail, but we probably dont care
-            #mozBuildExtensions.append('gnomevfs')
-            #mozBuildExtensions.append('negotiateauth')
-            
-            # XXX necessary to complete the build for now...need to find the
-            # dependency so we dont build with them
-            mozBuildOptions.append('enable-xsl')
-
-        elif config["mozApp"] == "xulrunner":
-            mozBuildOptions.append('enable-application=xulrunner')
-        else:
-            # needed for print preview, see change 67368
-            # (XXX Cruft? --TM)
-            mozBuildOptions.append('enable-mailnews') 
+        # Needed for building update-service packages.
+        # mozBuildOptions.append('enable-update-packaging')
 
         mozMakeOptions.append('MOZ_OBJDIR=@TOPSRCDIR@/%s' % config["mozObjDir"])
         
@@ -1450,21 +1412,13 @@ def target_configure(argv):
             # No need to specify count, mach will do parallel builds by default
             pass
 
-        # Platform options
-        if sys.platform.startswith("sunos"):
-            mozBuildOptions.append('disable-gnomevfs')
-            mozBuildOptions.append('disable-gnomeui')
-        if sys.platform == 'darwin':
-            mozBuildOptions.append('enable-prebinding')
-
         config["mozconfig"] = "# Options for 'configure' (same as command-line options).\n"
         
         # osx universal builds
         if sys.platform == 'darwin' and config["universal"]:
             config["mozconfig"] += ". $topsrcdir/build/macosx/universal/mozconfig\n"
 
-        if config["mozApp"] == "komodo":
-            mozBuildOptions.append('enable-application=komodo')
+        mozBuildOptions.append('enable-application=komodo')
 
         if config["stripBuild"]:
             mozBuildOptions.append('enable-strip')
@@ -1636,14 +1590,8 @@ def _relocatePyxpcom(config):
                 if line.strip().endswith(landmark):
                     old = line.strip().split(None, 1)[0]
         if old:
-            if config.mozApp == "xulrunner":
-                # xulrunner is a framework, so the path layout is
-                # slightly different
-                new = "@rpath/../../Frameworks/Python.framework/" \
-                      "Versions/%s/Python" % config.pyVer
-            else:
-                new = "@rpath/../Frameworks/Python.framework/" \
-                      "Versions/%s/Python" % config.pyVer
+            new = "@rpath/../Frameworks/Python.framework/" \
+                  "Versions/%s/Python" % config.pyVer
             cmd = "chmod +w %s && install_name_tool -change %s %s %s"\
                   % (lib, old, new, lib)
             log.info("\t%s", lib)
@@ -1706,13 +1654,7 @@ def target_silo_python(argv=["silo_python"]):
         # dir.
         komodo_app_name = "Komodo%s" % (config.buildType == 'debug'
                                         and 'debug' or '')
-        frameworks_subpath_from_mozApp = {
-            "komodo": ["%s.app" % komodo_app_name, "Contents", "Frameworks"],
-            "browser": ["Firefox.app", "Contents", "Frameworks"],
-            "xulrunner": ["XUL.framework", "Frameworks"],
-            "suite": ["SeaMonkey.app", "Contents", "Frameworks"],
-        }
-        siloDir = join(distDir, *frameworks_subpath_from_mozApp[config.mozApp])
+        siloDir = join(distDir, "%s.app" % komodo_app_name, "Contents", "Frameworks")
         # In a clean build the "Frameworks" dir may not yet have been
         # created, but the dir up one level should be there.
         if not exists(dirname(siloDir)):
@@ -1883,7 +1825,7 @@ def target_src_pyxpcom(argv=["src_pyxpcom"]):
         # Checkout pyxpcom - ensure we use the matching version to mozilla.
         repo_url = "http://hg.mozilla.org/pyxpcom/"
         repo_rev = None
-        if int(config.mozVer) < 31:
+        if int(config.mozVer) <= 31:
             # Requires the matching branch.
             repo_rev = "TAG_MOZILLA_%d" % (int(config.mozVer), )
         cmd = "hg clone"
@@ -1941,7 +1883,7 @@ def target_pyxpcom(argv=["pyxpcom"]):
     pyxpcom_obj_dir = join(moz_obj_dir, "extensions", "python")
     if not exists(pyxpcom_obj_dir):
         os.makedirs(pyxpcom_obj_dir)
-    configure_flags = 'PYTHON="%s"' % (_pymake_path_from_path(config.python), )
+    configure_flags = 'PYTHON="%s"' % (_unix_path_from_path(config.python), )
     configure_options = []
     if sys.platform.startswith("linux"):
         configure_flags += " ac_cv_visibility_pragma=no"
@@ -1955,12 +1897,29 @@ def target_pyxpcom(argv=["pyxpcom"]):
     elif sys.platform == "darwin":
         configure_flags += " CC=%s" % (config.gcc or "gcc",)
         configure_flags += " CXX=%s" % (config.gxx or "g++",)
+
     # Add any custom build FLAGS using the command line args - bug 91389.
-    if os.environ.get('CFLAGS'):
-        configure_flags += ' CFLAGS="%s"' % (os.environ.get('CFLAGS'))
-    if os.environ.get('CXXFLAGS'):
-        configure_flags += ' CXXFLAGS="%s"' % (os.environ.get('CXXFLAGS'))
-    ldFlags = os.environ.get('LDFLAGS', '')
+    cflags = os.environ.get('CFLAGS', '')
+    cxxflags = os.environ.get('CXXFLAGS', '')
+    ldflags = os.environ.get('LDFLAGS', '')
+
+    # Support for PGO.
+    if config.withPGOGeneration:
+        if sys.platform.startswith("linux"):
+            cflags   += " -fprofile-generate"
+            cxxflags += " -fprofile-generate"
+            ldflags  += " -fprofile-generate"
+    elif config.withPGOCollection:
+        if sys.platform.startswith("linux"):
+            cflags   += " -fprofile-use -fprofile-correction"
+            cxxflags += " -fprofile-use -fprofile-correction"
+            ldflags  += " -fprofile-use -fprofile-correction"
+
+    if cflags:
+        configure_flags += ' CFLAGS="%s"' % (cflags)
+    if cxxflags:
+        configure_flags += ' CXXFLAGS="%s"' % (cxxflags)
+
     if sys.platform.startswith("linux"):
         # On Linux, manually set the runtime library path (rpath) to pick up the
         # correct Python libraries. Without this, Komodo (pyxpcom) may load the
@@ -1969,9 +1928,9 @@ def target_pyxpcom(argv=["pyxpcom"]):
         # The magic sauce - need to escape the $ so it's not shell-translated.
         # Note that we want to end up with:
         #   "$ORIGIN:$ORIGIN/../python/lib"
-        ldFlags += " -Wl,-rpath=\\\\$\\$ORIGIN:\\\\$\\$ORIGIN/../python/lib"
-    if ldFlags:
-        configure_flags += ' LDFLAGS="%s"' % (ldFlags, )
+        ldflags += " -Wl,-rpath=\\\\$\\$ORIGIN:\\\\$\\$ORIGIN/../python/lib"
+    if ldflags:
+        configure_flags += ' LDFLAGS="%s"' % (ldflags, )
     if config.buildType == "debug":
         configure_options.append("--enable-debug")
         configure_options.append("--disable-optimize")
@@ -2000,18 +1959,19 @@ def target_pyxpcom(argv=["pyxpcom"]):
                        config.mozObjDir, "dist")
         komodo_app_name = "Komodo%s" % (config.buildType == 'debug'
                                         and 'debug' or '')
-        frameworks_subpath_from_mozApp = {
-            "komodo": ["%s.app" % komodo_app_name, "Contents", "Frameworks"],
-            "browser": ["Firefox.app", "Contents", "Frameworks"],
-            "xulrunner": ["XUL.framework", "Frameworks"],
-            "suite": ["SeaMonkey.app", "Contents", "Frameworks"],
-        }
-        siloDir = join(distDir, *frameworks_subpath_from_mozApp[config.mozApp])
-        siloDir = join(distDir, *frameworks_subpath_from_mozApp[config.mozApp])
+        siloDir = join(distDir, "%s.app" % komodo_app_name, "Contents", "Frameworks")
         komodoAppPath = join(dirname(siloDir), "MacOS")
         if exists(komodoAppPath):
             copy_cmd = 'cp -r %s %s' % (join(pyxpcom_obj_dir, "dist", "bin", "*"), komodoAppPath)
             _run(copy_cmd, log.info)
+    elif sys.platform.startswith("linux"):
+        # Ensure pyxpcom library is loaded at startup, otherwise Komodo will
+        # fail to load pyxpcom components.
+        dependentlibs_path = join(moz_obj_dir, "dist", "bin", "dependentlibs.list")
+        assert exists(dependentlibs_path)
+        if "libpyxpcom.so" not in file(dependentlibs_path).read():
+            file(dependentlibs_path, "a").write("libpyxpcom.so\n")
+            log.info("pyxpcom: added libpyxpcom.so to dependentlibs.list")
 
     _relocatePyxpcom(config)
 
@@ -2236,10 +2196,11 @@ def _get_mozilla_objdir(convert_to_native_win_path=False, force_echo_variable=Fa
     # the moz tree.
     objdir = None
     cmds = [ # one of these command should work
-        'python build/pymake/make.py -s -f client.mk echo-variable-OBJDIR',
         'make -f client.mk echo-variable-OBJDIR',
         'make -f client.mk echo_objdir',
     ]
+    if sys.platform.startswith("win"):
+        cmds.insert(0, 'mozmake -f client.mk echo-variable-OBJDIR')
     old_cwd = os.getcwd()
     os.chdir(srcdir)
     try:
@@ -2277,8 +2238,8 @@ def _msys_path_from_path(path):
     return msys_path
 
 
-def _pymake_path_from_path(path):
-    """Convert a path to pymake-compatible (i.e. forward-slash) path."""
+def _unix_path_from_path(path):
+    """Convert a path to unix-compatible (i.e. forward-slash) path."""
     return path.replace(os.sep, "/")
 
 
@@ -2300,13 +2261,10 @@ def _get_exe_path(cmd):
 def _get_make_command(config, srcDir):
     """Get the command to use for make
 
-    Returns a pymake command line on Windows, and make elsewhere
-    (because pymake is broken for Gecko17, fixed later)
+    Returns a mozmake command line on Windows, and make elsewhere
     """
-
     if sys.platform.startswith("win") :
-        return "python %s/build/pymake/make.py" % (srcDir, )
-
+        return "mozmake"
     return "make"
 
 def target_configure_mozilla(argv=["configure_mozilla"]):
@@ -2396,9 +2354,32 @@ def target_mozilla(argv=["mozilla"]):
             pass # mach errors out on first run, that's okay
 
         # do the build
-        _run_in_dir("python mach --log-file %s build" %
-                        (join(buildDir, "mach.log")),
+        build_args = ""
+
+        # XXX: Mozilla PGO builds require a huge amount of memory, so we've
+        #      disabled the mozilla PGO building for now.
+        #if config.withPGOGeneration:
+        #    build_args = "MOZ_PROFILE_GENERATE=1 MOZ_PGO_INSTRUMENTED=1"
+        #elif config.withPGOCollection:
+        #    build_args = "MOZ_PROFILE_USE=1"
+        #
+        #_run_in_dir("python mach --log-file %s configure %s" %
+        #                (join(buildDir, "mach.log"), build_args),
+        #            buildDir, log.info)
+        _run_in_dir("python mach --log-file %s build %s" %
+                        (join(buildDir, "mach.log"), build_args),
                     buildDir, log.info)
+
+    if int(config.mozVer) >= 35 and sys.platform.startswith("darwin"):
+        # Copy 'dependentlibs.list' into the Resources directory.
+        distDir = join(config.buildDir, config.srcTreeName, "mozilla",
+                       config.mozObjDir, "dist")
+        komodo_app_name = "Komodo%s" % (config.buildType == 'debug'
+                                        and 'debug' or '')
+        binDepPath = join(distDir, "%s.app" % komodo_app_name, "Contents", "MacOS", "dependentlibs.list")
+        resDepPath = join(distDir, "%s.app" % komodo_app_name, "Contents", "Resources", "dependentlibs.list")
+        if exists(binDepPath):
+            shutil.move(binDepPath, resDepPath)
 
         argv = argv[1:]
     return argv

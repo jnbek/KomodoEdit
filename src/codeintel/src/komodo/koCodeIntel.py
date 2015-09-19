@@ -10,7 +10,6 @@ import atexit
 import bisect
 import collections
 import functools
-import hashlib
 import json
 import logging
 import os.path
@@ -44,10 +43,6 @@ class KoCodeIntelService:
     _reg_clsid_ = "{fc4ca276-64a7-4d87-ab89-791ba463188d}"
     _reg_contractid_ = "@activestate.com/koCodeIntelService;1"
     _reg_desc_ = "Komodo Code Intelligence Service"
-
-    _unsolicited_response_handlers = {}
-    """ Registered handlers for unsolicited responses; takes two arguments,
-    (manager, response).  Note that both are transient."""
 
     _enabled = False
     _queue = None # queue of requests submitted before the manager initialized
@@ -131,7 +126,11 @@ class KoCodeIntelService:
         if self._quit_application:
             return # don't ever restart after quit-application
 
-        self._enabled = True
+        # Ensure only one activate call can happen at a time - issue 171.
+        with self._mgr_lock:
+            if self._enabled:
+                return
+            self._enabled = True
 
         def callback(result=Cr.NS_OK, message=None, success=None):
             if success is None:
@@ -175,14 +174,6 @@ class KoCodeIntelService:
             if self.mgr.state == self.mgr.STATE.CONNECTED:
                 callback()
 
-    def addUnsolicitedResponseHandler(self, command, handler):
-        """Register a handler for an unsolicited response.  If a command is
-        registered multiple times, only the last-registered handler will be
-        used.  Each handler must be a callable taking two arguments: the manager
-        involved, and the unsolicited response received.  Python-only.
-        """
-        self._unsolicited_response_handlers[command] = handler
-
     def _genDBCatalogDirs(self):
         """Yield all possible dirs in which to look for API Catalogs.
 
@@ -221,11 +212,13 @@ class KoCodeIntelService:
         if mgr:
             mgr.abort()
 
-    def scan_document(self, doc, linesAdded, useFileMtime):
+    def scan_document(self, doc, linesAdded, useFileMtime, callback=None):
         """ Scan a given document """
         if not self.enabled:
             return
         lang = doc.language
+        if callback is None:
+            callback = lambda request, response: None
         # Getting the path should match buf_from_koIDocument
         if doc.file:
             path = doc.file.displayPath
@@ -243,7 +236,7 @@ class KoCodeIntelService:
 
         self.send(command="scan-document",
                   discardable=True,
-                  path=buf.path,
+                  path=path,
                   priority=PRIORITY_IMMEDIATE if linesAdded
                            else PRIORITY_CURRENT,
                   language=doc.language,
@@ -251,7 +244,7 @@ class KoCodeIntelService:
                   text=text,
                   env=buf.env,
                   mtime=mtime,
-                  callback=lambda request, response: None)
+                  callback=callback)
 
     def buf_from_koIDocument(self, doc):
         if not self.enabled:
@@ -266,8 +259,8 @@ class KoCodeIntelService:
                 path = doc.file.displayPath
             else:
                 path = os.path.join("<Unsaved>", doc.baseName)
-            path = KoCodeIntelBuffer.normpath(path)
             self.debug("creating new %s document %s", doc.get_language(), path)
+            path = KoCodeIntelBuffer.normpath(path)
             buf = KoCodeIntelBuffer(lang=doc.get_language(),
                                     path=path,
                                     doc=doc,
@@ -324,8 +317,9 @@ class KoCodeIntelService:
                 instead of being queued if the manager is not available
             @note This is used directly by the code browser implementation
         """
-        assert self._enabled, \
-            "KoCodeIntelManager.send() shouldn't be called when not enabled"
+        if not self._enabled:
+            log.warn("send called when not enabled (ignoring command) %r", kwargs)
+            return
         if self.mgr:
             self.mgr.send(**kwargs)
         elif not discardable:
@@ -708,19 +702,9 @@ class KoCodeIntelManager(threading.Thread):
                            # (callback, request data, time sent)
                            # requests will time out at some point...
         self.unsent_requests = Queue.Queue()
-        threading.Thread.__init__(self,
-                                  name="Komodo Codeintel Manager %s" % (id(self)))
+        threading.Thread.__init__(self, name="CodeIntel Manager")
         self.daemon = True
         atexit.register(self.kill)
-
-        for attr in dir(self):
-            if not attr.startswith("do_"):
-                continue
-            handler = getattr(self, attr)
-            if not callable(handler):
-                continue
-            command = attr[len("do_"):].replace("_", "-")
-            service.addUnsolicitedResponseHandler(command, handler)
 
         env = Cc["@activestate.com/koUserEnviron;1"].getService()
         self._global_env = KoCodeIntelEnvironment(environment=env,
@@ -733,8 +717,7 @@ class KoCodeIntelManager(threading.Thread):
           .addObserverForTopics(self, ["xmlCatalogPaths"], True)
 
         # Ensure observer service is used on the main thread - bug 101543.
-        ProxyToMainThreadAsync(lambda:
-            self.observerSvc.addObserver(self, "quit-application", False))
+        ProxyToMainThreadAsync(self.observerSvc.addObserver)(self, "quit-application", False)
 
     @LazyClassAttribute
     def observerSvc(self):
@@ -837,7 +820,7 @@ class KoCodeIntelManager(threading.Thread):
                                             stdin=None,
                                             stdout=log_file,
                                             stderr=log_file)
-            self._watchdog_thread = threading.Thread(target=self._watchdog_thread,
+            self._watchdog_thread = threading.Thread(target=self._run_watchdog_thread,
                                                      name="CodeIntel Subprocess Watchdog",
                                                      args=(self.proc,))
             self._watchdog_thread.start()
@@ -1021,7 +1004,7 @@ class KoCodeIntelManager(threading.Thread):
             self.debug("internal initial requests completed")
             self._send_request_thread = threading.Thread(
                 target=self._send_queued_requests,
-                name="Komodo Codeintel Manager Request Sending Thread")
+                name="CodeIntel Manager Request Sending")
             self._send_request_thread.daemon = True
             self._send_request_thread.start()
             update("Codeintel ready.",
@@ -1100,7 +1083,7 @@ class KoCodeIntelManager(threading.Thread):
 
     def shutdown(self):
         """Abort any outstanding requests and shut down gracefully"""
-        self.abort = True
+        self.abort()
         if self.state is KoCodeIntelManager.STATE.DESTROYED:
             return # already dead
         if not self.pipe:
@@ -1115,7 +1098,8 @@ class KoCodeIntelManager(threading.Thread):
         Requests are expected to be well-formed (has a command, etc.)
         The callback recieves two arguments, the request and the response,
         both as dicts.
-        @note The callback is invoked on the main thread."""
+        @note The callback is invoked on a background thread; proxy it to
+        the main thread if desired."""
         if self.state is KoCodeIntelManager.STATE.DESTROYED:
             raise RuntimeError("Manager already shut down")
         self.unsent_requests.put((callback, kwargs))
@@ -1229,37 +1213,37 @@ class KoCodeIntelManager(threading.Thread):
             "KoCodeIntelService.handle() should run on main thread!"
         self.debug("handling: %s", json.dumps(response))
         req_id = response.get("req_id")
-        if req_id is None:
+        callback, request, sent_time = self.requests.get(req_id, (None, None, None))
+        request_command = request.get("command", "") if request else None
+        response_command = response.get("command", request_command)
+        if req_id is None or request_command != response_command:
             # unsolicited response, look for a handler
             try:
-                command = str(response.get("command", ""))
-                if not command:
+                response_command = str(response_command)
+                if not response_command:
+                    log.error("No 'command' in response %r", response)
                     raise ValueError("Invalid response frame %s" % (json.dumps(response),))
-                meth = self.svc._unsolicited_response_handlers.get(command)
+                meth = getattr(self, "do_" + response_command.replace("-", "_"), None)
                 if not meth:
-                    raise ValueError("Unknown unsolicited response \"%s\"" % (command,))
+                    log.error("Unknown command %r, response %r", response_command, response)
+                    raise ValueError("Unknown unsolicited response \"%s\"" % (response_command,))
                 meth(response)
             except:
                 log.exception("Error handling unsolicited response")
             return
-        callback, request, sent_time = self.requests.get(req_id, (None, None, None))
         if not request:
             try:
                 log.error("Discard response for unknown request %s (command %s): have %s",
-                          req_id, response["command"],
+                          req_id, response_command,
                           sorted(self.requests.keys()))
             except KeyError:
                 log.error("Discard response for unknown request %s (%r): have %s",
                           req_id, response,
                           sorted(self.requests.keys()))
             return
-        command = request.get("command", "")
         log_timing.info("Request %s (command %s) took %0.2f seconds",
                         req_id, request.get("command", "<unknown>"),
                         time.time() - sent_time)
-        assert response.get("command", command) == command, \
-            "Got unexpected response command %s from request %s" % (
-                response.get("command"), command)
         if "success" in response:
             self.debug("Removing completed request %s", req_id)
             del self.requests[req_id]
@@ -1383,7 +1367,11 @@ class KoCodeIntelManager(threading.Thread):
         """Report a codeintel error into the error log"""
         message = response.get("message")
         if message:
-            self._codeintel_logger.error(message.rstrip())
+            stack = response.get("stack")
+            if stack:
+                self._codeintel_logger.error(message.rstrip() + "\n" + stack)
+            else:
+                self._codeintel_logger.error(message.rstrip())
 
     def do_quit(self, request, response):
         """Quit successful"""
@@ -1394,7 +1382,7 @@ class KoCodeIntelManager(threading.Thread):
         if self.is_alive():
             self.join(1)
 
-    def _watchdog_thread(self, proc):
+    def _run_watchdog_thread(self, proc):
         """Thread handler to watch when the subprocess dies"""
         self.debug("Waiting for process to die...")
         proc.wait()
@@ -1409,6 +1397,13 @@ class KoCodeIntelManager(threading.Thread):
         """Kill the subprocess. This may be safely called when the process has
         already exited.  This should *always* be called no matter how the
         process exits, in order to maintain the correct state."""
+        # Check if it's already been destroyed.
+        with self.svc._mgr_lock:
+            if self.state == KoCodeIntelManager.STATE.DESTROYED:
+                return
+
+        # It's destroying time.
+        self.state = KoCodeIntelManager.STATE.DESTROYED
         try:
             self.proc.kill()
         except:
@@ -1426,7 +1421,6 @@ class KoCodeIntelManager(threading.Thread):
             self.unsent_requests.put((None, None))
         except:
             pass # umm... no idea?
-        self.state = KoCodeIntelManager.STATE.DESTROYED
         self.pipe = None
         if self._shutdown_callback:
             self._shutdown_callback(self)
@@ -1464,43 +1458,10 @@ class KoCodeIntelManager(threading.Thread):
             self.send(command="set-xml-catalogs", catalogs=catalogs)
         elif topic == "quit-application":
             # Possibly unclean shutdown; do a fast kill.
-            self.abort = True
+            self.abort()
             self.state = KoCodeIntelManager.STATE.QUITTING
             self.kill()
             self.observerSvc.removeObserver(self, "quit-application")
-
-    def do_get_buffer_contents(self, response):
-        """Unsolicited response handler: getting the contents of a buffer"""
-        path = response.get("path")
-        log.debug("Getting contents for %s", path)
-        try:
-            buf = self.svc.buf_from_path(path)
-            try:
-                doc_hash = buf.doc.md5Hash()
-            except IndexError: # buf has no views / this is a unit test
-                doc_hash = hashlib.md5(buf.doc.buffer).hexdigest()
-            if response.get("checksum") == doc_hash:
-                # No change
-                self.send(command="get-buffer-contents",
-                          path=path,
-                          env=buf.env,
-                          success=True,
-                          callback=False,
-                          )
-            else:
-                self.send(command="get-buffer-contents",
-                          path=path,
-                          text=buf.doc.buffer if buf.doc else None,
-                          env=buf.env,
-                          success=True,
-                          callback=False)
-        except:
-            log.exception("Failed to get contents of %s", path)
-            self.send(command="get-buffer-contents",
-                      path=path,
-                      success=False,
-                      callback=False)
-        log.debug("Done")
 
 class TriggerWrapper(object):
     """Wrapper class to XPCOM-ify a trigger"""
@@ -1538,8 +1499,6 @@ class KoCodeIntelBuffer(object):
         @param mgr {KoCodeIntelManager} The owning manager
         @param path {unicode} The path for this buffer, or something like
             "<Unsaved>/Text-1.txt" for an unsaved file
-        @param doc {KoDocument} The document associated with the buffer
-        @param svc {KoCodeIntelService} The codeintel service singleton
         """
         self.log = log.getChild("KoCodeIntelBuffer")
         self.path = KoCodeIntelBuffer.normpath(path)
@@ -1592,7 +1551,7 @@ class KoCodeIntelBuffer(object):
         try:
             environ = koprocessutils.getUserEnv()
         except COMException as ex:
-            if ex.errno == nsError.NS_ERROR_NOT_INITIALIZED:
+            if ex.errno == Cr.NS_ERROR_NOT_INITIALIZED:
                 koprocessutils.initialize()
                 environ = koprocessutils.getUserEnv()
             else:
@@ -1638,6 +1597,7 @@ class KoCodeIntelBuffer(object):
                   pos=pos,
                   env=self.env,
                   implicit=implicit,
+                  text=self.doc.buffer if self.doc else None,
                   callback=functools.partial(self._post_trg_from_pos_handler,
                                              callback, errorCallback,
                                              "trg_from_pos"))
@@ -1648,6 +1608,7 @@ class KoCodeIntelBuffer(object):
                   language=self.lang,
                   pos=pos,
                   env=self.env,
+                  text=self.doc.buffer if self.doc else None,
                   callback=functools.partial(self._post_trg_from_pos_handler,
                                              callback, errorCallback,
                                              "preceding_trg_from_pos"),
@@ -1660,6 +1621,7 @@ class KoCodeIntelBuffer(object):
                   language=self.lang,
                   pos=trg_pos,
                   env=self.env,
+                  text=self.doc.buffer if self.doc else None,
                   callback=functools.partial(self._post_trg_from_pos_handler,
                                              callback, errorCallback,
                                              "defn_trg_from_pos"))
@@ -1716,7 +1678,6 @@ class KoCodeIntelBuffer(object):
                   trg=trg._trg_,
                   silent=bool(flags & KoCodeIntelBuffer.EVAL_SILENT),
                   keep_existing=bool(flags & KoCodeIntelBuffer.EVAL_QUEUE),
-                  checksum=self.doc.md5Hash(),
                   callback=callback)
 
     def get_calltip_arg_range(self, trg_pos, calltip, curr_pos,
@@ -1739,6 +1700,7 @@ class KoCodeIntelBuffer(object):
         self.send(command="calltip-arg-range",
                   path=self.path,
                   language=self.lang,
+                  text=self.doc.buffer if self.doc else None,
                   trg_pos=trg_pos,
                   calltip=calltip,
                   curr_pos=curr_pos,
@@ -1807,6 +1769,7 @@ class KoCodeIntelBuffer(object):
         self.send(command="buf-to-html",
                   path=self.path,
                   language=self.lang,
+                  text=self.doc.buffer if self.doc else None,
                   env=self.env,
                   title=title,
                   flags=flag_dict,
@@ -1968,6 +1931,9 @@ class KoCodeIntelEnvironment(object):
             "defaultHTMLNamespace": T(),
             "defaultHTML5Decl": T(),
             "defaultHTML5Namespace": T(),
+            "gocodeDefaultLocation": T(),
+            "godefDefaultLocation": T(),
+            "golangDefaultLocation": T(),
             "javascriptExtraPaths": T(),
             "nodejsDefaultInterpreter": T(),
             "nodejsExtraPaths": T(),

@@ -79,7 +79,10 @@ except ImportError, e:
         class interfaces:
             koIFileNotificationObserver = None
         @staticmethod
-        def ProxyToMainThreadAsync(klass, fn):
+        def ProxyToMainThread(fn):
+            return fn
+        @staticmethod
+        def ProxyToMainThreadAsync(fn):
             return fn
     # Type of watch to perform (used in addObserver below)
     WATCH_FILE          = 0
@@ -201,6 +204,7 @@ class ObserverMonitor:
     def __str__(self):
         return "ObserverMonitor: f:%02x, r:%-5r, path:%s" % (self.flags, self.__recursive, self.path)
 
+    @components.ProxyToMainThread
     def getAliveObserver(self):
         if callable(self.__observer_weakref):
             o = self.__observer_weakref()
@@ -364,14 +368,3 @@ class ObserverMonitor:
         """Set the observer to be shut down; this is permanent and cannot be
         reset."""
         self.__shutdown = True
-
-
-##
-# Deprecated since Komodo 7.0.0b1 - typo in the name.
-#
-class ObserverMonitior(ObserverMonitor):
-    def __init__(self, *args, **kwargs):
-        import warnings
-        warnings.warn("ObserverMonitior is deprecated - use ObserverMonitor instead",
-                      category=DeprecationWarning)
-        ObserverMonitor.__init__(self, *args, **kwargs)

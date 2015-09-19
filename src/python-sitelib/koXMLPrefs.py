@@ -45,6 +45,7 @@ from xpcom.server.enumerator import SimpleEnumerator
 from xpcom.server import WrapObject, UnwrapObject
 from xpcom.client import WeakReference
 import re, sys, os
+import codecs
 from eollib import newl
 import logging
 import uriparse
@@ -90,32 +91,32 @@ def SmallestVersionFirst(a, b):
                [int(elem) for elem in b.split('.')])
 
 
-def pickleCache(object, filename):
+def pickleCache(prefs, filename):
     """
-    Pickle a pref object to a pref pickle file given the pref's
+    Pickle a prefs object to a pref pickle file given the pref's
     ordinary XML file name.
     """
     from tempfile import mkstemp
     (fdes, pickleFilename) = mkstemp(".tmp", "koPickle_")
     import cPickle
-    file = os.fdopen(fdes, "wb")
+    pickle_file = os.fdopen(fdes, "wb")
     try:
         try:
-            log.debug("Pickling object %s to %r", object, pickleFilename)
-            cPickle.dump(object, file, 1)
+            log.debug("Pickling object %s to %r", prefs, pickleFilename)
+            cPickle.dump(prefs, pickle_file, 1)
             log.info("saved the pickle to %r", pickleFilename)
         except:
             log.exception("pickleCache error for file %r", pickleFilename)
             try:
-                file.close()
-                file = None
+                pickle_file.close()
+                pickle_file = None
                 os.unlink(pickleFilename)
             except IOError, details:
                 log.error("Could not erase the incomplete pickle file %r: %s",
                           pickleFilename, details)
     finally:
-        if file is not None:
-            file.close()
+        if pickle_file is not None:
+            pickle_file.close()
             # Avoid copying bytes when writing to a profile file,
             # although this is hard to do on Windows
             import shutil
@@ -411,7 +412,6 @@ def serializePref(stream, pref, prefType, prefName=None, basedir=None):
         attrs = {}
         if prefName:
             attrs['id'] = cgi_escape(prefName,1)
-        # serialize string prefs as UTF-8
         if basedir:
             try:
                 relative = uriparse.RelativizeURL(basedir, pref)
@@ -446,7 +446,6 @@ def serializePref(stream, pref, prefType, prefName=None, basedir=None):
         for a,v in attrs.items():
             data += ' %s="%s"' % (a,v)
         data += u'>%s</string>%s' % (_xmlencode(pref), newl)
-        data = data.encode("utf-8")
         stream.write(data)
     elif prefType in ("boolean"):
         if prefName is None:
@@ -519,7 +518,6 @@ class koXMLPreferenceSetObjectFactory:
                 except:
                     # Couldn't remove the bad pickle cache - ignore it.
                     pass
-                cacheFilename
         else:
             log.info("cacheFilename for %r is None, so doing it the slow way",
                      filename)
@@ -528,16 +526,20 @@ class koXMLPreferenceSetObjectFactory:
         # Open the file (we're assuming that prefs are all local
         # files for now)
         if os.path.isfile(filename):
-            stream = open(filename, "r")
-            #XXX need to handle exceptions from minidom to be robust
-            try:
-                rootNode = minidom.parse(stream)
-            except (AttributeError, SAXParseException), e:
-                #XXX why would an AttributeError be raised?
-                log.exception("Couldn't deserialize file %r", filename)
-                return None
-            finally:
-                stream.close()
+            with codecs.open(filename, "rb", "utf-8") as stream:
+                #XXX need to handle exceptions from minidom to be robust
+                try:
+                    rootNode = minidom.parse(stream)
+                except:
+                    log.exception("Couldn't deserialize file %r", filename)
+                    # If we haven't tried to load the picked version, try that
+                    # now as a fallback - bug 105385.
+                    if cacheFilename is None and os.path.exists(filename + "c"):
+                            log.warn("falling back to the cached pref file")
+                            prefObject = dePickleCache(filename + "c")
+                            if prefObject is not None:
+                                return prefObject
+                    return None
         else:
             #log.debug("No prefs file %r - returning None...", filename)
             return None
